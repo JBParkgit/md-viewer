@@ -72,7 +72,7 @@ export default function Sidebar({ onOpenFile, onOpenFilePinned }: Props) {
 
   return (
     <div
-      className="flex flex-col border-r border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-800 flex-shrink-0 relative"
+      className="flex flex-col border-r border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-800 flex-shrink-0 relative select-none"
       style={{ width }}
     >
       {/* Sidebar tabs */}

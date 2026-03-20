@@ -14,7 +14,7 @@ export default function Toolbar() {
 
   return (
     <div
-      className="flex items-center gap-2 px-4 h-9 bg-gray-50 dark:bg-gray-800 border-b border-gray-200 dark:border-gray-700 flex-shrink-0"
+      className="flex items-center gap-2 px-4 h-9 bg-gray-50 dark:bg-gray-800 border-b border-gray-200 dark:border-gray-700 flex-shrink-0 select-none"
       style={{ WebkitAppRegion: 'drag', paddingRight: '150px' } as React.CSSProperties}
     >
       <span

@@ -97,7 +97,7 @@ export default function App() {
   }, [darkMode])
 
   return (
-    <div className="flex flex-col h-full bg-white dark:bg-gray-900 text-gray-900 dark:text-gray-100 select-none">
+    <div className="flex flex-col h-full bg-white dark:bg-gray-900 text-gray-900 dark:text-gray-100">
       <Toolbar />
       <TabBar />
       <div className="flex flex-1 overflow-hidden">

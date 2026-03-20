@@ -47,7 +47,7 @@ export default function TabBar() {
   if (tabs.length === 0) return null
 
   return (
-    <div className="flex items-stretch bg-gray-100 dark:bg-gray-800 border-b border-gray-200 dark:border-gray-700 flex-shrink-0">
+    <div className="flex items-stretch bg-gray-100 dark:bg-gray-800 border-b border-gray-200 dark:border-gray-700 flex-shrink-0 select-none">
       {/* 왼쪽 스크롤 화살표 */}
       {canScrollLeft && (
         <button
