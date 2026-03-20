@@ -1,0 +1,299 @@
+import { app, BrowserWindow, ipcMain, dialog, nativeTheme, shell } from 'electron'
+import { join } from 'path'
+import { readdir, readFile, writeFile, stat } from 'fs/promises'
+import { statSync, existsSync } from 'fs'
+import Store from 'electron-store'
+import chokidar from 'chokidar'
+
+// electron-store 타입 정의
+interface StoreSchema {
+  projects: { path: string; name: string }[]
+  darkMode: 'system' | 'light' | 'dark'
+  fontSize: number
+  favorites: string[]
+  recentFiles: string[]
+}
+
+const store = new Store<StoreSchema>({
+  defaults: {
+    projects: [],
+    darkMode: 'system',
+    fontSize: 16,
+    favorites: [],
+    recentFiles: [],
+  },
+})
+
+let mainWindow: BrowserWindow | null = null
+let watchers: Map<string, ReturnType<typeof chokidar.watch>> = new Map()
+
+function createWindow() {
+  mainWindow = new BrowserWindow({
+    width: 1400,
+    height: 900,
+    minWidth: 800,
+    minHeight: 600,
+    webPreferences: {
+      preload: join(__dirname, 'preload.js'),
+      contextIsolation: true,
+      nodeIntegration: false,
+      webSecurity: false, // local file:// images
+    },
+    titleBarStyle: 'hidden',
+    titleBarOverlay: {
+      color: '#ffffff',
+      symbolColor: '#374151',
+      height: 36,
+    },
+    backgroundColor: '#ffffff',
+  })
+
+  // Apply saved dark mode
+  const savedDarkMode = store.get('darkMode', 'system')
+  if (savedDarkMode === 'dark') {
+    nativeTheme.themeSource = 'dark'
+    mainWindow.setTitleBarOverlay({ color: '#1f2937', symbolColor: '#f9fafb', height: 36 })
+  } else if (savedDarkMode === 'light') {
+    nativeTheme.themeSource = 'light'
+  } else {
+    nativeTheme.themeSource = 'system'
+  }
+
+  if (process.env.NODE_ENV === 'development') {
+    mainWindow.loadURL('http://localhost:5173')
+    mainWindow.webContents.openDevTools()
+  } else {
+    mainWindow.loadFile(join(__dirname, '../dist/index.html'))
+  }
+
+  mainWindow.on('closed', () => {
+    mainWindow = null
+    // Stop all watchers
+    watchers.forEach(w => w.close())
+    watchers.clear()
+  })
+}
+
+app.whenReady().then(createWindow)
+
+app.on('window-all-closed', () => {
+  if (process.platform !== 'darwin') app.quit()
+})
+
+app.on('activate', () => {
+  if (BrowserWindow.getAllWindows().length === 0) createWindow()
+})
+
+// ── IPC: Open Folder Dialog ──────────────────────────────────────────────────
+ipcMain.handle('dialog:openFolder', async () => {
+  if (!mainWindow) return null
+  const result = await dialog.showOpenDialog(mainWindow, {
+    properties: ['openDirectory'],
+    title: '프로젝트 폴더 추가',
+  })
+  if (result.canceled || result.filePaths.length === 0) return null
+  return result.filePaths[0]
+})
+
+// ── IPC: Read Directory ──────────────────────────────────────────────────────
+interface FileNode {
+  name: string
+  path: string
+  type: 'file' | 'directory'
+  children?: FileNode[]
+}
+
+async function readDirRecursive(dirPath: string, depth = 0): Promise<FileNode[]> {
+  if (depth > 6) return []
+  try {
+    const entries = await readdir(dirPath, { withFileTypes: true })
+    const nodes: FileNode[] = []
+    for (const entry of entries) {
+      if (entry.name.startsWith('.')) continue
+      const fullPath = join(dirPath, entry.name)
+      if (entry.isDirectory()) {
+        nodes.push({
+          name: entry.name,
+          path: fullPath,
+          type: 'directory',
+          children: await readDirRecursive(fullPath, depth + 1),
+        })
+      } else if (entry.isFile()) {
+        nodes.push({ name: entry.name, path: fullPath, type: 'file' })
+      }
+    }
+    // Sort: directories first, then files
+    nodes.sort((a, b) => {
+      if (a.type !== b.type) return a.type === 'directory' ? -1 : 1
+      return a.name.localeCompare(b.name, 'ko')
+    })
+    return nodes
+  } catch {
+    return []
+  }
+}
+
+ipcMain.handle('fs:readDir', async (_e, dirPath: string) => {
+  return readDirRecursive(dirPath)
+})
+
+// ── IPC: Read File ───────────────────────────────────────────────────────────
+ipcMain.handle('fs:readFile', async (_e, filePath: string) => {
+  try {
+    const content = await readFile(filePath, 'utf-8')
+    return { success: true, content }
+  } catch (err: unknown) {
+    return { success: false, error: String(err) }
+  }
+})
+
+// ── IPC: Write File ──────────────────────────────────────────────────────────
+ipcMain.handle('fs:writeFile', async (_e, filePath: string, content: string) => {
+  try {
+    await writeFile(filePath, content, 'utf-8')
+    return { success: true }
+  } catch (err: unknown) {
+    return { success: false, error: String(err) }
+  }
+})
+
+// ── IPC: Full-text Search ────────────────────────────────────────────────────
+interface SearchResult {
+  filePath: string
+  fileName: string
+  lineNumber: number
+  lineText: string
+}
+
+async function searchInDir(dirPath: string, query: string, results: SearchResult[]) {
+  try {
+    const entries = await readdir(dirPath, { withFileTypes: true })
+    for (const entry of entries) {
+      if (entry.name.startsWith('.')) continue
+      const fullPath = join(dirPath, entry.name)
+      if (entry.isDirectory()) {
+        await searchInDir(fullPath, query, results)
+      } else if (entry.isFile() && entry.name.endsWith('.md')) {
+        try {
+          const content = await readFile(fullPath, 'utf-8')
+          const lines = content.split('\n')
+          const lowerQuery = query.toLowerCase()
+          lines.forEach((line, i) => {
+            if (line.toLowerCase().includes(lowerQuery)) {
+              results.push({
+                filePath: fullPath,
+                fileName: entry.name,
+                lineNumber: i + 1,
+                lineText: line.trim().slice(0, 120),
+              })
+            }
+          })
+        } catch {}
+      }
+    }
+  } catch {}
+}
+
+ipcMain.handle('fs:search', async (_e, dirPath: string, query: string) => {
+  if (!query.trim()) return []
+  const results: SearchResult[] = []
+  await searchInDir(dirPath, query, results)
+  return results.slice(0, 200)
+})
+
+// ── IPC: Watch File (단일 파일 변경 감지) ────────────────────────────────────
+ipcMain.handle('fs:watchFile', (_e, filePath: string) => {
+  if (watchers.has(filePath)) return
+  const watcher = chokidar.watch(filePath, { ignoreInitial: true, usePolling: false })
+  watcher.on('change', () => {
+    mainWindow?.webContents.send('fs:fileChanged', filePath)
+  })
+  watchers.set(filePath, watcher)
+})
+
+ipcMain.handle('fs:unwatchFile', (_e, filePath: string) => {
+  const watcher = watchers.get(filePath)
+  if (watcher) {
+    watcher.close()
+    watchers.delete(filePath)
+  }
+})
+
+// ── IPC: Watch Directory (프로젝트 트리 자동 갱신) ───────────────────────────
+const dirWatchers = new Map<string, ReturnType<typeof chokidar.watch>>()
+const dirTimers = new Map<string, ReturnType<typeof setTimeout>>()
+
+ipcMain.handle('fs:watchDir', (_e, dirPath: string) => {
+  if (dirWatchers.has(dirPath)) return
+  const watcher = chokidar.watch(dirPath, {
+    ignoreInitial: true,
+    usePolling: false,
+    depth: 8,
+    ignored: /(^|[/\\])\../,   // 숨김 파일 무시
+  })
+  const notify = () => {
+    // 연속 변경을 300ms 디바운스로 묶어서 한 번만 알림
+    const existing = dirTimers.get(dirPath)
+    if (existing) clearTimeout(existing)
+    dirTimers.set(dirPath, setTimeout(() => {
+      mainWindow?.webContents.send('fs:dirChanged', dirPath)
+      dirTimers.delete(dirPath)
+    }, 300))
+  }
+  watcher.on('add', notify).on('unlink', notify).on('addDir', notify).on('unlinkDir', notify)
+  dirWatchers.set(dirPath, watcher)
+})
+
+ipcMain.handle('fs:unwatchDir', (_e, dirPath: string) => {
+  const existing = dirTimers.get(dirPath)
+  if (existing) { clearTimeout(existing); dirTimers.delete(dirPath) }
+  const watcher = dirWatchers.get(dirPath)
+  if (watcher) { watcher.close(); dirWatchers.delete(dirPath) }
+})
+
+// ── IPC: Store ───────────────────────────────────────────────────────────────
+ipcMain.handle('store:get', (_e, key: keyof StoreSchema) => {
+  return store.get(key)
+})
+
+ipcMain.handle('store:set', (_e, key: keyof StoreSchema, value: unknown) => {
+  store.set(key, value as StoreSchema[typeof key])
+})
+
+// ── IPC: Dark Mode ───────────────────────────────────────────────────────────
+ipcMain.handle('theme:set', (_e, mode: 'system' | 'light' | 'dark') => {
+  nativeTheme.themeSource = mode
+  store.set('darkMode', mode)
+  if (!mainWindow) return
+  if (mode === 'dark') {
+    mainWindow.setTitleBarOverlay({ color: '#1f2937', symbolColor: '#f9fafb', height: 36 })
+  } else {
+    mainWindow.setTitleBarOverlay({ color: '#ffffff', symbolColor: '#374151', height: 36 })
+  }
+})
+
+ipcMain.handle('theme:isDark', () => {
+  return nativeTheme.shouldUseDarkColors
+})
+
+// ── IPC: Open file in explorer ───────────────────────────────────────────────
+ipcMain.handle('shell:showItemInFolder', (_e, filePath: string) => {
+  shell.showItemInFolder(filePath)
+})
+
+// ── IPC: Open file with default OS app ───────────────────────────────────────
+ipcMain.handle('shell:openPath', async (_e, filePath: string) => {
+  const err = await shell.openPath(filePath)
+  return err || null  // null = success, string = error message
+})
+
+// ── IPC: Get file stats ──────────────────────────────────────────────────────
+ipcMain.handle('fs:stat', (_e, filePath: string) => {
+  try {
+    if (!existsSync(filePath)) return null
+    const s = statSync(filePath)
+    return { size: s.size, mtime: s.mtime.toISOString() }
+  } catch {
+    return null
+  }
+})

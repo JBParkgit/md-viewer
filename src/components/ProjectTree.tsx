@@ -1,0 +1,260 @@
+import { useEffect, useRef, useState } from 'react'
+import { useAppStore, type Project } from '../stores/useAppStore'
+import FileTree from './FileTree'
+import type { FileNode } from '../types/electron'
+
+const PROJECT_COLORS = [
+  { dot: 'bg-blue-500',    header: 'hover:bg-blue-50 dark:hover:bg-blue-900/20',    text: 'text-blue-700 dark:text-blue-300' },
+  { dot: 'bg-emerald-500', header: 'hover:bg-emerald-50 dark:hover:bg-emerald-900/20', text: 'text-emerald-700 dark:text-emerald-300' },
+  { dot: 'bg-violet-500',  header: 'hover:bg-violet-50 dark:hover:bg-violet-900/20',  text: 'text-violet-700 dark:text-violet-300' },
+  { dot: 'bg-amber-500',   header: 'hover:bg-amber-50 dark:hover:bg-amber-900/20',   text: 'text-amber-700 dark:text-amber-300' },
+  { dot: 'bg-rose-500',    header: 'hover:bg-rose-50 dark:hover:bg-rose-900/20',    text: 'text-rose-700 dark:text-rose-300' },
+  { dot: 'bg-cyan-500',    header: 'hover:bg-cyan-50 dark:hover:bg-cyan-900/20',    text: 'text-cyan-700 dark:text-cyan-300' },
+]
+
+interface Props {
+  project: Project
+  searchQuery: string
+  onOpenFile: (filePath: string, fileName: string) => void
+  onOpenFilePinned: (filePath: string, fileName: string) => void
+}
+
+export default function ProjectTree({ project, searchQuery, onOpenFile, onOpenFilePinned }: Props) {
+  const { projects, toggleProjectCollapsed, removeProject, renameProject } = useAppStore()
+  const [nodes, setNodes] = useState<FileNode[]>([])
+  const [loading, setLoading] = useState(false)
+  const [contextMenu, setContextMenu] = useState<{ x: number; y: number } | null>(null)
+  const [isRenaming, setIsRenaming] = useState(false)
+  const [renameValue, setRenameValue] = useState(project.name)
+  const renameInputRef = useRef<HTMLInputElement>(null)
+
+  const projectIndex = projects.findIndex(p => p.id === project.id)
+  const color = PROJECT_COLORS[projectIndex % PROJECT_COLORS.length]
+
+  const loadNodes = () => {
+    setLoading(true)
+    window.electronAPI.readDir(project.path).then(data => {
+      setNodes(data)
+      setLoading(false)
+    })
+  }
+
+  // Load nodes when expanded; watch directory for auto-refresh
+  useEffect(() => {
+    if (project.collapsed) {
+      window.electronAPI.unwatchDir(project.path)
+      return
+    }
+    loadNodes()
+    window.electronAPI.watchDir(project.path)
+    return () => {
+      window.electronAPI.unwatchDir(project.path)
+    }
+  }, [project.path, project.collapsed])
+
+  // Reload tree when directory changes on disk
+  useEffect(() => {
+    const unsub = window.electronAPI.onDirChanged((changedPath) => {
+      if (!project.collapsed && changedPath === project.path) {
+        loadNodes()
+      }
+    })
+    return unsub
+  }, [project.path, project.collapsed])
+
+  // Focus input when rename mode starts
+  useEffect(() => {
+    if (isRenaming) {
+      setRenameValue(project.name)
+      setTimeout(() => {
+        renameInputRef.current?.focus()
+        renameInputRef.current?.select()
+      }, 0)
+    }
+  }, [isRenaming])
+
+  const commitRename = () => {
+    renameProject(project.id, renameValue)
+    setIsRenaming(false)
+  }
+
+  const cancelRename = () => {
+    setRenameValue(project.name)
+    setIsRenaming(false)
+  }
+
+  const handleRenameKeyDown = (e: React.KeyboardEvent) => {
+    if (e.key === 'Enter') commitRename()
+    else if (e.key === 'Escape') cancelRename()
+  }
+
+  const startRename = (e?: React.MouseEvent) => {
+    e?.stopPropagation()
+    setContextMenu(null)
+    setIsRenaming(true)
+  }
+
+  return (
+    <div className="border-b border-gray-200 dark:border-gray-700 last:border-0">
+      {/* Project header */}
+      <div
+        className={`group flex items-center gap-2 px-2 py-2 cursor-pointer transition-colors ${isRenaming ? '' : color.header}`}
+        onClick={() => { if (!isRenaming) toggleProjectCollapsed(project.id) }}
+        onContextMenu={(e) => { e.preventDefault(); if (!isRenaming) setContextMenu({ x: e.clientX, y: e.clientY }) }}
+        title={project.path}
+      >
+        {/* Collapse arrow */}
+        <svg
+          className={`w-3.5 h-3.5 text-gray-400 flex-shrink-0 transition-transform ${project.collapsed ? '' : 'rotate-90'}`}
+          fill="none" stroke="currentColor" viewBox="0 0 24 24"
+        >
+          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
+        </svg>
+
+        {/* Color dot */}
+        <span className={`w-2 h-2 rounded-full flex-shrink-0 ${color.dot}`} />
+
+        {/* Project name / rename input */}
+        {isRenaming ? (
+          <input
+            ref={renameInputRef}
+            value={renameValue}
+            onChange={e => setRenameValue(e.target.value)}
+            onKeyDown={handleRenameKeyDown}
+            onBlur={commitRename}
+            onClick={e => e.stopPropagation()}
+            className="flex-1 text-xs font-semibold px-1 py-0.5 rounded border border-blue-400 bg-white dark:bg-gray-700 text-gray-900 dark:text-gray-100 focus:outline-none focus:ring-1 focus:ring-blue-400 min-w-0"
+          />
+        ) : (
+          <span
+            className={`flex-1 text-xs font-semibold truncate ${color.text}`}
+            onDoubleClick={startRename}
+          >
+            {project.name}
+          </span>
+        )}
+
+        {/* Hover actions */}
+        {!isRenaming && (
+          <div className="flex items-center gap-0.5 opacity-0 group-hover:opacity-100 transition-opacity">
+            <button
+              onClick={startRename}
+              className="w-5 h-5 flex items-center justify-center rounded hover:bg-gray-200 dark:hover:bg-gray-600"
+              title="이름 변경"
+            >
+              <svg className="w-3 h-3 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z" />
+              </svg>
+            </button>
+            <button
+              onClick={(e) => { e.stopPropagation(); loadNodes() }}
+              className="w-5 h-5 flex items-center justify-center rounded hover:bg-gray-200 dark:hover:bg-gray-600"
+              title="새로고침"
+            >
+              <svg className="w-3 h-3 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+              </svg>
+            </button>
+            <button
+              onClick={(e) => { e.stopPropagation(); removeProject(project.id) }}
+              className="w-5 h-5 flex items-center justify-center rounded hover:bg-red-100 dark:hover:bg-red-900/30 hover:text-red-500"
+              title="프로젝트 제거"
+            >
+              <svg className="w-3 h-3 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+              </svg>
+            </button>
+          </div>
+        )}
+
+        {/* Rename confirm/cancel buttons */}
+        {isRenaming && (
+          <div className="flex items-center gap-0.5 flex-shrink-0" onClick={e => e.stopPropagation()}>
+            <button
+              onMouseDown={(e) => { e.preventDefault(); commitRename() }}
+              className="w-5 h-5 flex items-center justify-center rounded bg-blue-500 hover:bg-blue-600 text-white"
+              title="확인 (Enter)"
+            >
+              <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M5 13l4 4L19 7" />
+              </svg>
+            </button>
+            <button
+              onMouseDown={(e) => { e.preventDefault(); cancelRename() }}
+              className="w-5 h-5 flex items-center justify-center rounded hover:bg-gray-200 dark:hover:bg-gray-600"
+              title="취소 (Esc)"
+            >
+              <svg className="w-3 h-3 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+              </svg>
+            </button>
+          </div>
+        )}
+
+        {loading && (
+          <div className="w-3 h-3 border border-gray-400 border-t-transparent rounded-full animate-spin flex-shrink-0" />
+        )}
+      </div>
+
+      {/* File tree */}
+      {!project.collapsed && (
+        <div className="pl-1">
+          {loading ? (
+            <div className="px-6 py-2 text-xs text-gray-400">불러오는 중...</div>
+          ) : (
+            <FileTree nodes={nodes} onOpenFile={onOpenFile} onOpenFilePinned={onOpenFilePinned} searchQuery={searchQuery} depth={0} />
+          )}
+        </div>
+      )}
+
+      {/* Context menu */}
+      {contextMenu && (
+        <>
+          <div className="fixed inset-0 z-40" onClick={() => setContextMenu(null)} />
+          <div
+            className="fixed z-50 bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-600 rounded-lg shadow-xl py-1 min-w-44"
+            style={{ left: contextMenu.x, top: contextMenu.y }}
+          >
+            <button
+              onClick={startRename}
+              className="w-full flex items-center gap-2 px-3 py-1.5 text-xs hover:bg-gray-100 dark:hover:bg-gray-700 text-left"
+            >
+              <svg className="w-3.5 h-3.5 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z" />
+              </svg>
+              이름 변경
+            </button>
+            <button
+              onClick={() => { window.electronAPI.showItemInFolder(project.path); setContextMenu(null) }}
+              className="w-full flex items-center gap-2 px-3 py-1.5 text-xs hover:bg-gray-100 dark:hover:bg-gray-700 text-left"
+            >
+              <svg className="w-3.5 h-3.5 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 7a2 2 0 012-2h4l2 2h8a2 2 0 012 2v9a2 2 0 01-2 2H5a2 2 0 01-2-2V7z" />
+              </svg>
+              탐색기에서 열기
+            </button>
+            <button
+              onClick={() => { loadNodes(); setContextMenu(null) }}
+              className="w-full flex items-center gap-2 px-3 py-1.5 text-xs hover:bg-gray-100 dark:hover:bg-gray-700 text-left"
+            >
+              <svg className="w-3.5 h-3.5 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+              </svg>
+              새로고침
+            </button>
+            <div className="my-1 border-t border-gray-100 dark:border-gray-700" />
+            <button
+              onClick={() => { removeProject(project.id); setContextMenu(null) }}
+              className="w-full flex items-center gap-2 px-3 py-1.5 text-xs hover:bg-red-50 dark:hover:bg-red-900/20 text-red-600 dark:text-red-400 text-left"
+            >
+              <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+              </svg>
+              프로젝트 제거
+            </button>
+          </div>
+        </>
+      )}
+    </div>
+  )
+}
