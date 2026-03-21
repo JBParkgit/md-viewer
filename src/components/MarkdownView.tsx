@@ -38,6 +38,10 @@ export default function MarkdownView({ tab }: Props) {
     if (src.startsWith('http://') || src.startsWith('https://') || src.startsWith('file://') || src.startsWith('data:')) {
       return src
     }
+    // Absolute path (e.g. C:/... or /...)
+    if (/^[A-Za-z]:[\\/]/.test(src) || src.startsWith('/')) {
+      return 'file:///' + src.replace(/\\/g, '/')
+    }
     // Relative path: resolve against file's directory
     const dir = tab.filePath.replace(/[\\/][^\\/]+$/, '')
     const abs = `${dir}/${src}`.replace(/\\/g, '/')

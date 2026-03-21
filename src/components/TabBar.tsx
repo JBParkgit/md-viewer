@@ -44,7 +44,9 @@ export default function TabBar() {
     scrollRef.current?.scrollBy({ left: dir === 'left' ? -160 : 160, behavior: 'smooth' })
   }
 
-  if (tabs.length === 0) return null
+  if (tabs.length === 0) return (
+    <div className="h-9 bg-gray-100 dark:bg-gray-800 border-b border-gray-200 dark:border-gray-700 flex-shrink-0" />
+  )
 
   return (
     <div className="flex items-stretch bg-gray-100 dark:bg-gray-800 border-b border-gray-200 dark:border-gray-700 flex-shrink-0 select-none">

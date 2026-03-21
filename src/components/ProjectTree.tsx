@@ -14,21 +14,39 @@ const PROJECT_COLORS = [
 
 interface Props {
   project: Project
+  projectIndex: number
   searchQuery: string
   onOpenFile: (filePath: string, fileName: string) => void
   onOpenFilePinned: (filePath: string, fileName: string) => void
 }
 
-export default function ProjectTree({ project, searchQuery, onOpenFile, onOpenFilePinned }: Props) {
-  const { projects, toggleProjectCollapsed, removeProject, renameProject } = useAppStore()
+export default function ProjectTree({ project, projectIndex, searchQuery, onOpenFile, onOpenFilePinned }: Props) {
+  const toggleProjectCollapsed = useAppStore(s => s.toggleProjectCollapsed)
+  const removeProject = useAppStore(s => s.removeProject)
+  const renameProject = useAppStore(s => s.renameProject)
   const [nodes, setNodes] = useState<FileNode[]>([])
   const [loading, setLoading] = useState(false)
+  const [openDirs, setOpenDirs] = useState<Set<string>>(new Set())
+
+  const toggleDir = (path: string, isOpen: boolean) => {
+    setOpenDirs(prev => {
+      const next = new Set(prev)
+      if (isOpen) next.add(path)
+      else next.delete(path)
+      return next
+    })
+  }
   const [contextMenu, setContextMenu] = useState<{ x: number; y: number } | null>(null)
   const [isRenaming, setIsRenaming] = useState(false)
   const [renameValue, setRenameValue] = useState(project.name)
+  const [isCreatingFile, setIsCreatingFile] = useState(false)
+  const [newFileName, setNewFileName] = useState('')
+  const [isCreatingFolder, setIsCreatingFolder] = useState(false)
+  const [newFolderName, setNewFolderName] = useState('')
   const renameInputRef = useRef<HTMLInputElement>(null)
+  const newFileInputRef = useRef<HTMLInputElement>(null)
+  const newFolderInputRef = useRef<HTMLInputElement>(null)
 
-  const projectIndex = projects.findIndex(p => p.id === project.id)
   const color = PROJECT_COLORS[projectIndex % PROJECT_COLORS.length]
 
   const loadNodes = () => {
@@ -94,6 +112,109 @@ export default function ProjectTree({ project, searchQuery, onOpenFile, onOpenFi
     setIsRenaming(true)
   }
 
+  const startCreateFile = (e?: React.MouseEvent) => {
+    e?.stopPropagation()
+    setContextMenu(null)
+    setNewFileName('')
+    setIsCreatingFile(true)
+    // Expand the project if collapsed
+    if (project.collapsed) toggleProjectCollapsed(project.id)
+    setTimeout(() => {
+      newFileInputRef.current?.focus()
+    }, 50)
+  }
+
+  const commitCreateFile = async () => {
+    const name = newFileName.trim()
+    if (!name) { setIsCreatingFile(false); return }
+    const finalName = name.endsWith('.md') ? name : name + '.md'
+    const sep = project.path.includes('/') ? '/' : '\\'
+    const targetDir = useAppStore.getState().lastOpenedDir[project.id] || project.path
+    const filePath = targetDir + sep + finalName
+    const result = await window.electronAPI.createFile(filePath, `# ${name.replace(/\.md$/, '')}\n\n`)
+    if (result.success) {
+      loadNodes()
+      onOpenFilePinned(filePath, finalName)
+    } else {
+      alert(result.error || '파일 생성 실패')
+    }
+    setIsCreatingFile(false)
+  }
+
+  const cancelCreateFile = () => {
+    setIsCreatingFile(false)
+    setNewFileName('')
+  }
+
+  const handleNewFileKeyDown = (e: React.KeyboardEvent) => {
+    if (e.key === 'Enter') commitCreateFile()
+    else if (e.key === 'Escape') cancelCreateFile()
+  }
+
+  // Listen for create-file event from toolbar
+  useEffect(() => {
+    const handler = (e: Event) => {
+      const detail = (e as CustomEvent).detail
+      if (detail === project.id) {
+        setNewFileName('')
+        setIsCreatingFile(true)
+        if (project.collapsed) toggleProjectCollapsed(project.id)
+        setTimeout(() => newFileInputRef.current?.focus(), 50)
+      }
+    }
+    window.addEventListener('create-file-in-project', handler)
+    return () => window.removeEventListener('create-file-in-project', handler)
+  }, [project.id, project.collapsed, toggleProjectCollapsed])
+
+  // ── Create folder ─────────────────────────────────────────────────────
+  const startCreateFolder = (e?: React.MouseEvent) => {
+    e?.stopPropagation()
+    setContextMenu(null)
+    setNewFolderName('')
+    setIsCreatingFolder(true)
+    if (project.collapsed) toggleProjectCollapsed(project.id)
+    setTimeout(() => newFolderInputRef.current?.focus(), 50)
+  }
+
+  const commitCreateFolder = async () => {
+    const name = newFolderName.trim()
+    if (!name) { setIsCreatingFolder(false); return }
+    const sep = project.path.includes('/') ? '/' : '\\'
+    const dirPath = project.path + sep + name
+    const result = await window.electronAPI.createDir(dirPath)
+    if (result.success) {
+      loadNodes()
+    } else {
+      alert(result.error || '폴더 생성 실패')
+    }
+    setIsCreatingFolder(false)
+  }
+
+  const cancelCreateFolder = () => {
+    setIsCreatingFolder(false)
+    setNewFolderName('')
+  }
+
+  const handleNewFolderKeyDown = (e: React.KeyboardEvent) => {
+    if (e.key === 'Enter') commitCreateFolder()
+    else if (e.key === 'Escape') cancelCreateFolder()
+  }
+
+  // Listen for create-folder event from toolbar
+  useEffect(() => {
+    const handler = (e: Event) => {
+      const detail = (e as CustomEvent).detail
+      if (detail === project.id) {
+        setNewFolderName('')
+        setIsCreatingFolder(true)
+        if (project.collapsed) toggleProjectCollapsed(project.id)
+        setTimeout(() => newFolderInputRef.current?.focus(), 50)
+      }
+    }
+    window.addEventListener('create-folder-in-project', handler)
+    return () => window.removeEventListener('create-folder-in-project', handler)
+  }, [project.id, project.collapsed, toggleProjectCollapsed])
+
   return (
     <div className="border-b border-gray-200 dark:border-gray-700 last:border-0">
       {/* Project header */}
@@ -138,6 +259,24 @@ export default function ProjectTree({ project, searchQuery, onOpenFile, onOpenFi
         {!isRenaming && (
           <div className="flex items-center gap-0.5 opacity-0 group-hover:opacity-100 transition-opacity">
             <button
+              onClick={startCreateFile}
+              className="w-5 h-5 flex items-center justify-center rounded hover:bg-gray-200 dark:hover:bg-gray-600"
+              title="새 마크다운 파일"
+            >
+              <svg className="w-3 h-3 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
+              </svg>
+            </button>
+            <button
+              onClick={startCreateFolder}
+              className="w-5 h-5 flex items-center justify-center rounded hover:bg-gray-200 dark:hover:bg-gray-600"
+              title="새 폴더"
+            >
+              <svg className="w-3 h-3 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 13h6m-3-3v6m-9 1V7a2 2 0 012-2h6l2 2h6a2 2 0 012 2v8a2 2 0 01-2 2H5a2 2 0 01-2-2z" />
+              </svg>
+            </button>
+            <button
               onClick={startRename}
               className="w-5 h-5 flex items-center justify-center rounded hover:bg-gray-200 dark:hover:bg-gray-600"
               title="이름 변경"
@@ -156,7 +295,7 @@ export default function ProjectTree({ project, searchQuery, onOpenFile, onOpenFi
               </svg>
             </button>
             <button
-              onClick={(e) => { e.stopPropagation(); removeProject(project.id) }}
+              onClick={(e) => { e.stopPropagation(); if (window.confirm(`"${project.name}" 프로젝트를 목록에서 제거하시겠습니까?`)) removeProject(project.id) }}
               className="w-5 h-5 flex items-center justify-center rounded hover:bg-red-100 dark:hover:bg-red-900/30 hover:text-red-500"
               title="프로젝트 제거"
             >
@@ -196,13 +335,87 @@ export default function ProjectTree({ project, searchQuery, onOpenFile, onOpenFi
         )}
       </div>
 
+      {/* New file input */}
+      {isCreatingFile && (
+        <div className="flex items-center gap-1 px-3 py-1.5 bg-blue-50 dark:bg-blue-900/20 border-b border-blue-200 dark:border-blue-800">
+          <svg className="w-3.5 h-3.5 text-blue-500 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+          </svg>
+          <input
+            ref={newFileInputRef}
+            value={newFileName}
+            onChange={e => setNewFileName(e.target.value)}
+            onKeyDown={handleNewFileKeyDown}
+            onBlur={commitCreateFile}
+            placeholder="파일명.md"
+            className="flex-1 text-xs px-1.5 py-0.5 rounded border border-blue-300 dark:border-blue-600 bg-white dark:bg-gray-700 focus:outline-none focus:ring-1 focus:ring-blue-400 min-w-0"
+            onClick={e => e.stopPropagation()}
+          />
+          <button
+            onMouseDown={(e) => { e.preventDefault(); commitCreateFile() }}
+            className="w-5 h-5 flex items-center justify-center rounded bg-blue-500 hover:bg-blue-600 text-white flex-shrink-0"
+            title="생성 (Enter)"
+          >
+            <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M5 13l4 4L19 7" />
+            </svg>
+          </button>
+          <button
+            onMouseDown={(e) => { e.preventDefault(); cancelCreateFile() }}
+            className="w-5 h-5 flex items-center justify-center rounded hover:bg-gray-200 dark:hover:bg-gray-600 flex-shrink-0"
+            title="취소 (Esc)"
+          >
+            <svg className="w-3 h-3 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+            </svg>
+          </button>
+        </div>
+      )}
+
+      {/* New folder input */}
+      {isCreatingFolder && (
+        <div className="flex items-center gap-1 px-3 py-1.5 bg-yellow-50 dark:bg-yellow-900/20 border-b border-yellow-200 dark:border-yellow-800">
+          <svg className="w-3.5 h-3.5 text-yellow-500 flex-shrink-0" fill="currentColor" viewBox="0 0 24 24">
+            <path d="M3 7a2 2 0 012-2h4l2 2h8a2 2 0 012 2v9a2 2 0 01-2 2H5a2 2 0 01-2-2V7z" />
+          </svg>
+          <input
+            ref={newFolderInputRef}
+            value={newFolderName}
+            onChange={e => setNewFolderName(e.target.value)}
+            onKeyDown={handleNewFolderKeyDown}
+            onBlur={commitCreateFolder}
+            placeholder="폴더명"
+            className="flex-1 text-xs px-1.5 py-0.5 rounded border border-yellow-300 dark:border-yellow-600 bg-white dark:bg-gray-700 focus:outline-none focus:ring-1 focus:ring-yellow-400 min-w-0"
+            onClick={e => e.stopPropagation()}
+          />
+          <button
+            onMouseDown={(e) => { e.preventDefault(); commitCreateFolder() }}
+            className="w-5 h-5 flex items-center justify-center rounded bg-yellow-500 hover:bg-yellow-600 text-white flex-shrink-0"
+            title="생성 (Enter)"
+          >
+            <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M5 13l4 4L19 7" />
+            </svg>
+          </button>
+          <button
+            onMouseDown={(e) => { e.preventDefault(); cancelCreateFolder() }}
+            className="w-5 h-5 flex items-center justify-center rounded hover:bg-gray-200 dark:hover:bg-gray-600 flex-shrink-0"
+            title="취소 (Esc)"
+          >
+            <svg className="w-3 h-3 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+            </svg>
+          </button>
+        </div>
+      )}
+
       {/* File tree */}
       {!project.collapsed && (
         <div className="pl-1">
           {loading ? (
             <div className="px-6 py-2 text-xs text-gray-400">불러오는 중...</div>
           ) : (
-            <FileTree nodes={nodes} onOpenFile={onOpenFile} onOpenFilePinned={onOpenFilePinned} searchQuery={searchQuery} depth={0} />
+            <FileTree nodes={nodes} onOpenFile={onOpenFile} onOpenFilePinned={onOpenFilePinned} searchQuery={searchQuery} depth={0} projectId={project.id} openDirs={openDirs} toggleDir={toggleDir} />
           )}
         </div>
       )}
@@ -215,6 +428,25 @@ export default function ProjectTree({ project, searchQuery, onOpenFile, onOpenFi
             className="fixed z-50 bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-600 rounded-lg shadow-xl py-1 min-w-44"
             style={{ left: contextMenu.x, top: contextMenu.y }}
           >
+            <button
+              onClick={startCreateFile}
+              className="w-full flex items-center gap-2 px-3 py-1.5 text-xs hover:bg-gray-100 dark:hover:bg-gray-700 text-left"
+            >
+              <svg className="w-3.5 h-3.5 text-blue-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
+              </svg>
+              새 마크다운 파일
+            </button>
+            <button
+              onClick={startCreateFolder}
+              className="w-full flex items-center gap-2 px-3 py-1.5 text-xs hover:bg-gray-100 dark:hover:bg-gray-700 text-left"
+            >
+              <svg className="w-3.5 h-3.5 text-yellow-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 13h6m-3-3v6m-9 1V7a2 2 0 012-2h6l2 2h6a2 2 0 012 2v8a2 2 0 01-2 2H5a2 2 0 01-2-2z" />
+              </svg>
+              새 폴더
+            </button>
+            <div className="my-1 border-t border-gray-100 dark:border-gray-700" />
             <button
               onClick={startRename}
               className="w-full flex items-center gap-2 px-3 py-1.5 text-xs hover:bg-gray-100 dark:hover:bg-gray-700 text-left"
@@ -244,7 +476,7 @@ export default function ProjectTree({ project, searchQuery, onOpenFile, onOpenFi
             </button>
             <div className="my-1 border-t border-gray-100 dark:border-gray-700" />
             <button
-              onClick={() => { removeProject(project.id); setContextMenu(null) }}
+              onClick={() => { if (window.confirm(`"${project.name}" 프로젝트를 목록에서 제거하시겠습니까?`)) { removeProject(project.id) } setContextMenu(null) }}
               className="w-full flex items-center gap-2 px-3 py-1.5 text-xs hover:bg-red-50 dark:hover:bg-red-900/20 text-red-600 dark:text-red-400 text-left"
             >
               <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">

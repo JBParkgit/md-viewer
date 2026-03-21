@@ -16,6 +16,7 @@ export interface ElectronAPI {
   openFolder: () => Promise<string | null>
   readDir: (path: string) => Promise<FileNode[]>
   readFile: (path: string) => Promise<{ success: boolean; content?: string; error?: string }>
+  readFileBinary: (path: string) => Promise<{ success: boolean; data?: ArrayBuffer; error?: string }>
   writeFile: (path: string, content: string) => Promise<{ success: boolean; error?: string }>
   search: (dirPath: string, query: string) => Promise<SearchResult[]>
   watchFile: (path: string) => Promise<void>
@@ -25,6 +26,16 @@ export interface ElectronAPI {
   unwatchDir: (path: string) => Promise<void>
   onDirChanged: (cb: (dirPath: string) => void) => () => void
   stat: (path: string) => Promise<{ size: number; mtime: string } | null>
+  copyImageToDir: (srcPath: string, destDir: string) => Promise<{ success: boolean; fileName?: string; error?: string }>
+  listImages: (dirPath: string) => Promise<string[]>
+  listVideos: (dirPath: string) => Promise<string[]>
+  createFile: (filePath: string, content?: string) => Promise<{ success: boolean; error?: string }>
+  renameFile: (oldPath: string, newName: string) => Promise<{ success: boolean; newPath?: string; error?: string }>
+  deleteFile: (filePath: string) => Promise<{ success: boolean; error?: string }>
+  move: (srcPath: string, destDir: string) => Promise<{ success: boolean; newPath?: string; error?: string }>
+  createDir: (dirPath: string) => Promise<{ success: boolean; error?: string }>
+  saveFolder: () => Promise<string | null>
+  getPathForFile: (file: File) => string
   showItemInFolder: (path: string) => Promise<void>
   openPath: (path: string) => Promise<string | null>
   storeGet: (key: string) => Promise<unknown>

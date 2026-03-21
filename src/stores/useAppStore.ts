@@ -1,6 +1,16 @@
 import { create } from 'zustand'
 
-export type TabFileType = 'md' | 'image'
+export type TabFileType = 'md' | 'image' | 'pdf' | 'docx' | 'video'
+
+export const PREDEFINED_TAGS = [
+  { id: 'in-progress', label: '진행중', color: 'bg-yellow-100 text-yellow-700 dark:bg-yellow-900 dark:text-yellow-300' },
+  { id: 'approved', label: '승인완료', color: 'bg-green-100 text-green-700 dark:bg-green-900 dark:text-green-300' },
+  { id: 'review', label: '검토필요', color: 'bg-red-100 text-red-700 dark:bg-red-900 dark:text-red-300' },
+  { id: 'draft', label: '초안', color: 'bg-gray-100 text-gray-600 dark:bg-gray-700 dark:text-gray-300' },
+  { id: 'final', label: '최종본', color: 'bg-blue-100 text-blue-700 dark:bg-blue-900 dark:text-blue-300' },
+] as const
+
+export type TagId = typeof PREDEFINED_TAGS[number]['id']
 
 export interface Tab {
   id: string
@@ -42,6 +52,7 @@ interface AppStore {
   addProject: (folderPath: string) => void
   removeProject: (projectId: string) => void
   renameProject: (projectId: string, newName: string) => void
+  reorderProject: (fromIndex: number, toIndex: number) => void
   toggleProjectCollapsed: (projectId: string) => void
 
   // Search
@@ -52,9 +63,13 @@ interface AppStore {
   searchProjectId: string | null   // which project to full-text search (null = all)
   setSearchProjectId: (id: string | null) => void
 
+  // Last opened directory per project (for new file creation)
+  lastOpenedDir: Record<string, string>
+  setLastOpenedDir: (projectId: string, dirPath: string) => void
+
   // Sidebar tab
-  sidebarTab: 'tree' | 'favorites' | 'recent'
-  setSidebarTab: (tab: 'tree' | 'favorites' | 'recent') => void
+  sidebarTab: 'tree' | 'favorites' | 'recent' | 'gallery'
+  setSidebarTab: (tab: 'tree' | 'favorites' | 'recent' | 'gallery') => void
 
   // Favorites
   favorites: string[]
@@ -64,6 +79,11 @@ interface AppStore {
   // Recent files
   recentFiles: { path: string; name: string }[]
   addRecentFile: (path: string, name: string) => void
+
+  // File tags
+  fileTags: Record<string, string[]>
+  addFileTag: (filePath: string, tagId: string) => void
+  removeFileTag: (filePath: string, tagId: string) => void
 
   // Settings
   darkMode: 'system' | 'light' | 'dark'
@@ -75,7 +95,8 @@ interface AppStore {
 }
 
 let tabCounter = 0
-let projectCounter = 0
+export let projectCounter = 0
+export function setProjectCounter(n: number) { projectCounter = n }
 
 function saveProjects(projects: Project[]) {
   window.electronAPI.storeSet('projects', projects.map(p => ({ path: p.path, name: p.name })))
@@ -205,6 +226,17 @@ export const useAppStore = create<AppStore>((set, get) => ({
     saveProjects(updated)
   },
 
+  reorderProject: (fromIndex, toIndex) => {
+    const { projects } = get()
+    if (fromIndex === toIndex) return
+    if (fromIndex < 0 || toIndex < 0 || fromIndex >= projects.length || toIndex >= projects.length) return
+    const updated = [...projects]
+    const [moved] = updated.splice(fromIndex, 1)
+    updated.splice(toIndex, 0, moved)
+    set({ projects: updated })
+    saveProjects(updated)
+  },
+
   toggleProjectCollapsed: (projectId) => {
     set(s => ({
       projects: s.projects.map(p =>
@@ -220,6 +252,12 @@ export const useAppStore = create<AppStore>((set, get) => ({
   setFullTextQuery: (q) => set({ fullTextQuery: q }),
   searchProjectId: null,
   setSearchProjectId: (id) => set({ searchProjectId: id }),
+
+  // ── Last opened directory ────────────────────────────────────────────────
+  lastOpenedDir: {},
+  setLastOpenedDir: (projectId, dirPath) => {
+    set(s => ({ lastOpenedDir: { ...s.lastOpenedDir, [projectId]: dirPath } }))
+  },
 
   // ── Sidebar tab ───────────────────────────────────────────────────────────
   sidebarTab: 'tree',
@@ -251,6 +289,29 @@ export const useAppStore = create<AppStore>((set, get) => ({
       const updated = [{ path, name }, ...filtered].slice(0, 20)
       window.electronAPI.storeSet('recentFiles', updated)
       return { recentFiles: updated }
+    })
+  },
+
+  // ── File tags ─────────────────────────────────────────────────────────────
+  fileTags: {},
+  addFileTag: (filePath, tagId) => {
+    set(s => {
+      const current = s.fileTags[filePath] || []
+      if (current.includes(tagId)) return s
+      const updated = { ...s.fileTags, [filePath]: [...current, tagId] }
+      window.electronAPI.storeSet('fileTags', updated)
+      return { fileTags: updated }
+    })
+  },
+  removeFileTag: (filePath, tagId) => {
+    set(s => {
+      const current = s.fileTags[filePath] || []
+      const filtered = current.filter(t => t !== tagId)
+      const updated = { ...s.fileTags }
+      if (filtered.length === 0) delete updated[filePath]
+      else updated[filePath] = filtered
+      window.electronAPI.storeSet('fileTags', updated)
+      return { fileTags: updated }
     })
   },
 

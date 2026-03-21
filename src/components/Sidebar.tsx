@@ -1,6 +1,7 @@
 import { useState, useEffect, useRef } from 'react'
 import { useAppStore } from '../stores/useAppStore'
 import ProjectTree from './ProjectTree'
+import ImageGallery from './ImageGallery'
 import type { SearchResult } from '../types/electron'
 
 interface Props {
@@ -21,11 +22,13 @@ export default function Sidebar({ onOpenFile, onOpenFilePinned }: Props) {
     favorites,
     removeFavorite,
     recentFiles,
+    reorderProject,
   } = useAppStore()
 
   const [fullTextResults, setFullTextResults] = useState<SearchResult[]>([])
   const [isSearching, setIsSearching] = useState(false)
   const [width, setWidth] = useState(280)
+  const [dragOverIndex, setDragOverIndex] = useState<number | null>(null)
   const [isDragging, setIsDragging] = useState(false)
 
   // Full-text search across all projects
@@ -77,7 +80,7 @@ export default function Sidebar({ onOpenFile, onOpenFilePinned }: Props) {
     >
       {/* Sidebar tabs */}
       <div className="flex border-b border-gray-200 dark:border-gray-700">
-        {(['tree', 'favorites', 'recent'] as const).map((tab) => (
+        {(['tree', 'favorites', 'recent', 'gallery'] as const).map((tab) => (
           <button
             key={tab}
             onClick={() => setSidebarTab(tab)}
@@ -87,10 +90,63 @@ export default function Sidebar({ onOpenFile, onOpenFilePinned }: Props) {
                 : 'text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-300'
             }`}
           >
-            {tab === 'tree' ? '프로젝트' : tab === 'favorites' ? '즐겨찾기' : '최근'}
+            {tab === 'tree' ? '프로젝트' : tab === 'favorites' ? '즐겨찾기' : tab === 'recent' ? '최근' : '갤러리'}
           </button>
         ))}
       </div>
+
+      {/* Action toolbar (tree tab only) */}
+      {sidebarTab === 'tree' && (
+        <div className="flex items-center justify-end gap-0.5 px-2 py-1 border-b border-gray-200 dark:border-gray-700">
+          <button
+            onClick={() => {
+              // Find the first non-collapsed project, or first project
+              const store = useAppStore.getState()
+              const target = store.projects.find(p => !p.collapsed) || store.projects[0]
+              if (target) {
+                // Dispatch a custom event so ProjectTree can pick it up
+                window.dispatchEvent(new CustomEvent('create-file-in-project', { detail: target.id }))
+              } else {
+                alert('먼저 프로젝트를 추가하세요.')
+              }
+            }}
+            className="w-6 h-6 flex items-center justify-center rounded hover:bg-gray-200 dark:hover:bg-gray-600 text-gray-500 dark:text-gray-400"
+            title="새 파일"
+          >
+            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M14 3v2m0-2h2m-2 0V1" />
+            </svg>
+          </button>
+          <button
+            onClick={() => {
+              const store = useAppStore.getState()
+              const target = store.projects.find(p => !p.collapsed) || store.projects[0]
+              if (target) {
+                window.dispatchEvent(new CustomEvent('create-folder-in-project', { detail: target.id }))
+              } else {
+                alert('먼저 프로젝트를 추가하세요.')
+              }
+            }}
+            className="w-6 h-6 flex items-center justify-center rounded hover:bg-gray-200 dark:hover:bg-gray-600 text-gray-500 dark:text-gray-400"
+            title="새 폴더"
+          >
+            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 7a2 2 0 012-2h4l2 2h8a2 2 0 012 2v9a2 2 0 01-2 2H5a2 2 0 01-2-2V7z" />
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 11v4m2-2h-4" />
+            </svg>
+          </button>
+          <button
+            onClick={handleAddProject}
+            className="w-6 h-6 flex items-center justify-center rounded hover:bg-gray-200 dark:hover:bg-gray-600 text-gray-500 dark:text-gray-400"
+            title="프로젝트 폴더 추가"
+          >
+            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 13h6m-3-3v6m-9 1V7a2 2 0 012-2h6l2 2h6a2 2 0 012 2v8a2 2 0 01-2 2H5a2 2 0 01-2-2z" />
+            </svg>
+          </button>
+        </div>
+      )}
 
       {/* Search bar (tree tab only) */}
       {sidebarTab === 'tree' && (
@@ -192,14 +248,37 @@ export default function Sidebar({ onOpenFile, onOpenFilePinned }: Props) {
                   </div>
                 ) : (
                   <div>
-                    {projects.map(project => (
-                      <ProjectTree
+                    {projects.map((project, index) => (
+                      <div
                         key={project.id}
-                        project={project}
-                        searchQuery={searchQuery}
-                        onOpenFile={onOpenFile}
-                        onOpenFilePinned={onOpenFilePinned}
-                      />
+                        draggable
+                        onDragStart={(e) => {
+                          e.dataTransfer.effectAllowed = 'move'
+                          e.dataTransfer.setData('text/plain', String(index))
+                        }}
+                        onDragOver={(e) => {
+                          e.preventDefault()
+                          e.dataTransfer.dropEffect = 'move'
+                          setDragOverIndex(index)
+                        }}
+                        onDragLeave={() => setDragOverIndex(null)}
+                        onDrop={(e) => {
+                          e.preventDefault()
+                          const fromIndex = Number(e.dataTransfer.getData('text/plain'))
+                          reorderProject(fromIndex, index)
+                          setDragOverIndex(null)
+                        }}
+                        onDragEnd={() => setDragOverIndex(null)}
+                        className={dragOverIndex === index ? 'border-t-2 border-blue-500' : ''}
+                      >
+                        <ProjectTree
+                          project={project}
+                          projectIndex={index}
+                          searchQuery={searchQuery}
+                          onOpenFile={onOpenFile}
+                          onOpenFilePinned={onOpenFilePinned}
+                        />
+                      </div>
                     ))}
                   </div>
                 )}
@@ -272,6 +351,11 @@ export default function Sidebar({ onOpenFile, onOpenFilePinned }: Props) {
               ))
             )}
           </div>
+        )}
+
+        {/* ── 갤러리 탭 ── */}
+        {sidebarTab === 'gallery' && (
+          <ImageGallery onOpenFile={onOpenFile} />
         )}
       </div>
 

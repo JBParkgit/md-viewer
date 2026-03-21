@@ -389,6 +389,65 @@ html, body, #root {
   background-position: 0 0, 0 10px, 10px -10px, -10px 0px;
 }
 
+/* ── DOCX Viewer Styles ──────────────────────────────────────────────────── */
+.docx-content {
+  font-size: var(--md-font-size);
+  line-height: 1.75;
+  color: #1f2937;
+}
+
+.docx-content h1 { font-size: 2em; font-weight: 700; margin: 1.2em 0 0.5em; }
+.docx-content h2 { font-size: 1.5em; font-weight: 700; margin: 1em 0 0.4em; }
+.docx-content h3 { font-size: 1.25em; font-weight: 600; margin: 0.8em 0 0.3em; }
+.docx-content p { margin-bottom: 0.8em; }
+.docx-content ul, .docx-content ol { padding-left: 2em; margin-bottom: 1em; }
+.docx-content li { margin-bottom: 0.25em; }
+
+.docx-content table {
+  border-collapse: collapse;
+  width: 100%;
+  margin: 1em 0;
+}
+
+.docx-content th,
+.docx-content td {
+  border: 1px solid #d1d5db;
+  padding: 0.5em 0.8em;
+  text-align: left;
+}
+
+.docx-content th {
+  background: #f9fafb;
+  font-weight: 600;
+}
+
+.docx-content img {
+  max-width: 100%;
+  border-radius: 4px;
+}
+
+.docx-content a {
+  color: #2563eb;
+  text-decoration: underline;
+}
+
+.dark .docx-content {
+  color: #e5e7eb;
+}
+
+.dark .docx-content th {
+  background: #374151;
+  border-color: #4b5563;
+}
+
+.dark .docx-content td {
+  border-color: #4b5563;
+}
+
+.dark .docx-content a {
+  color: #60a5fa;
+}
+
 .dark .bg-checker {
   background-color: #374151;
   background-image:

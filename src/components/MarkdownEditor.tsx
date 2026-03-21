@@ -1,8 +1,12 @@
-import { useCallback, useEffect, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
+import { EditorView } from '@uiw/react-codemirror'
 import { useAppStore, type Tab } from '../stores/useAppStore'
+import { markRecentlySaved } from '../utils/recentSave'
 import MarkdownView from './MarkdownView'
 import LiveEditor from './LiveEditor'
 import TableOfContents from './TableOfContents'
+import TableEditor from './TableEditor'
+import FloatingToolbar from './FloatingToolbar'
 
 interface Props {
   tab: Tab
@@ -21,6 +25,8 @@ export default function MarkdownEditor({ tab }: Props) {
 
   const [saveError, setSaveError] = useState<string | null>(null)
   const [saveSuccess, setSaveSuccess] = useState(false)
+  const [showTableEditor, setShowTableEditor] = useState(false)
+  const editorViewRef = useRef<EditorView | null>(null)
 
   // isEditMode reused as: false=preview, true=split or editor
   // We store layout in local state (persists per component mount)
@@ -34,6 +40,7 @@ export default function MarkdownEditor({ tab }: Props) {
   // ── Save file ─────────────────────────────────────────────────────────────
   const handleSave = useCallback(async (content?: string) => {
     const c = content ?? tab.content
+    markRecentlySaved(tab.filePath)
     const result = await window.electronAPI.writeFile(tab.filePath, c)
     if (result.success) {
       markTabSaved(tab.id, c)
@@ -148,6 +155,11 @@ export default function MarkdownEditor({ tab }: Props) {
         </div>
       )}
 
+      {/* Markdown formatting toolbar */}
+      {layout !== 'preview' && (
+        <MdToolbar editorViewRef={editorViewRef} onTableClick={() => setShowTableEditor(true)} />
+      )}
+
       {/* Main content */}
       <div className="flex flex-1 overflow-hidden">
         {layout === 'preview' && (
@@ -164,6 +176,7 @@ export default function MarkdownEditor({ tab }: Props) {
             tab={tab}
             onSave={handleSave}
             onChange={(content) => useAppStore.getState().updateTabContent(tab.id, content)}
+            editorViewRef={editorViewRef}
           />
         )}
 
@@ -173,9 +186,34 @@ export default function MarkdownEditor({ tab }: Props) {
             onSave={handleSave}
             onChange={(content) => useAppStore.getState().updateTabContent(tab.id, content)}
             showTOC={showTOC}
+            editorViewRef={editorViewRef}
           />
         )}
       </div>
+
+      {/* Floating selection toolbar */}
+      {layout !== 'preview' && <FloatingToolbar editorViewRef={editorViewRef} />}
+
+      {/* Table Editor Modal */}
+      {showTableEditor && (
+        <TableEditor
+          onInsert={(md) => {
+            const view = editorViewRef.current
+            if (view) {
+              const pos = view.state.selection.main.head
+              const text = '\n' + md + '\n'
+              view.dispatch({
+                changes: { from: pos, insert: text },
+                selection: { anchor: pos + text.length },
+              })
+            } else {
+              // Fallback: append to content
+              useAppStore.getState().updateTabContent(tab.id, tab.content + '\n' + md + '\n')
+            }
+          }}
+          onClose={() => setShowTableEditor(false)}
+        />
+      )}
     </div>
   )
 }
@@ -186,9 +224,155 @@ interface SplitViewProps {
   onSave: (content: string) => void
   onChange: (content: string) => void
   showTOC: boolean
+  editorViewRef?: React.MutableRefObject<EditorView | null>
 }
 
-function SplitView({ tab, onSave, onChange, showTOC }: SplitViewProps) {
+// ── Markdown Formatting Toolbar ──────────────────────────────────────────────
+interface MdToolbarProps {
+  editorViewRef: React.MutableRefObject<EditorView | null>
+  onTableClick: () => void
+}
+
+function MdToolbar({ editorViewRef, onTableClick }: MdToolbarProps) {
+  const insert = (text: string) => {
+    const view = editorViewRef.current
+    if (!view) return
+    const pos = view.state.selection.main.head
+    view.dispatch({ changes: { from: pos, insert: text }, selection: { anchor: pos + text.length } })
+    view.focus()
+  }
+
+  const wrap = (before: string, after: string) => {
+    const view = editorViewRef.current
+    if (!view) return
+    const { from, to } = view.state.selection.main
+    const selected = view.state.sliceDoc(from, to)
+    const replacement = before + (selected || '텍스트') + after
+    view.dispatch({ changes: { from, to, insert: replacement }, selection: { anchor: from + before.length, head: from + replacement.length - after.length } })
+    view.focus()
+  }
+
+  const wrapLine = (prefix: string) => {
+    const view = editorViewRef.current
+    if (!view) return
+    const { from } = view.state.selection.main
+    const line = view.state.doc.lineAt(from)
+    const lineText = line.text
+    if (lineText.startsWith(prefix)) {
+      // Same prefix: toggle off
+      view.dispatch({ changes: { from: line.from, to: line.from + prefix.length, insert: '' } })
+    } else {
+      // Replace existing heading prefix if any, otherwise just prepend
+      const headingMatch = lineText.match(/^#{1,6}\s/)
+      if (headingMatch) {
+        view.dispatch({ changes: { from: line.from, to: line.from + headingMatch[0].length, insert: prefix } })
+      } else {
+        view.dispatch({ changes: { from: line.from, insert: prefix } })
+      }
+    }
+    view.focus()
+  }
+
+  const btnCls = "w-7 h-7 flex items-center justify-center rounded hover:bg-gray-200 dark:hover:bg-gray-600 text-gray-600 dark:text-gray-400 transition-colors"
+  const sepCls = "w-px h-4 bg-gray-200 dark:bg-gray-600 mx-0.5"
+
+  return (
+    <div className="flex items-center gap-0.5 px-3 h-8 border-b border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-800 flex-shrink-0 overflow-x-auto">
+      {/* Headings */}
+      <button onClick={() => wrapLine('# ')} className={btnCls} title="제목 1 (H1)">
+        <span className="text-xs font-bold">H1</span>
+      </button>
+      <button onClick={() => wrapLine('## ')} className={btnCls} title="제목 2 (H2)">
+        <span className="text-xs font-bold">H2</span>
+      </button>
+      <button onClick={() => wrapLine('### ')} className={btnCls} title="제목 3 (H3)">
+        <span className="text-xs font-bold">H3</span>
+      </button>
+      <div className={sepCls} />
+
+      {/* Bold */}
+      <button onClick={() => wrap('**', '**')} className={btnCls} title="굵게 (Ctrl+B)">
+        <span className="text-xs font-bold">B</span>
+      </button>
+      {/* Italic */}
+      <button onClick={() => wrap('*', '*')} className={btnCls} title="기울임 (Ctrl+I)">
+        <span className="text-xs italic">I</span>
+      </button>
+      {/* Strikethrough */}
+      <button onClick={() => wrap('~~', '~~')} className={btnCls} title="취소선">
+        <span className="text-xs line-through">S</span>
+      </button>
+      {/* Inline code */}
+      <button onClick={() => wrap('`', '`')} className={btnCls} title="인라인 코드">
+        <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 20l4-16m4 4l4 4-4 4M6 16l-4-4 4-4" />
+        </svg>
+      </button>
+      <div className={sepCls} />
+
+      {/* Unordered list */}
+      <button onClick={() => wrapLine('- ')} className={btnCls} title="목록">
+        <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 6h16M4 12h16M4 18h16" />
+        </svg>
+      </button>
+      {/* Ordered list */}
+      <button onClick={() => wrapLine('1. ')} className={btnCls} title="번호 목록">
+        <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 6h16M4 12h16M4 18h8" />
+        </svg>
+      </button>
+      {/* Checklist */}
+      <button onClick={() => wrapLine('- [ ] ')} className={btnCls} title="체크리스트">
+        <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-6 9l2 2 4-4" />
+        </svg>
+      </button>
+      <div className={sepCls} />
+
+      {/* Blockquote */}
+      <button onClick={() => wrapLine('> ')} className={btnCls} title="인용">
+        <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 10h.01M12 10h.01M16 10h.01M9 16H5a2 2 0 01-2-2V6a2 2 0 012-2h14a2 2 0 012 2v8a2 2 0 01-2 2h-5l-5 5v-5z" />
+        </svg>
+      </button>
+      {/* Link */}
+      <button onClick={() => wrap('[', '](url)')} className={btnCls} title="링크">
+        <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" />
+        </svg>
+      </button>
+      {/* Image */}
+      <button onClick={() => insert('![alt](url)')} className={btnCls} title="이미지">
+        <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z" />
+        </svg>
+      </button>
+      <div className={sepCls} />
+
+      {/* Code block */}
+      <button onClick={() => insert('\n```\n코드\n```\n')} className={btnCls} title="코드 블록">
+        <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 9l3 3-3 3m5 0h3M5 20h14a2 2 0 002-2V6a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
+        </svg>
+      </button>
+      {/* Table */}
+      <button onClick={onTableClick} className={btnCls} title="표 삽입">
+        <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 10h18M3 14h18M10 3v18M14 3v18M3 6a3 3 0 013-3h12a3 3 0 013 3v12a3 3 0 01-3 3H6a3 3 0 01-3-3V6z" />
+        </svg>
+      </button>
+      {/* Horizontal rule */}
+      <button onClick={() => insert('\n---\n')} className={btnCls} title="구분선">
+        <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 12h16" />
+        </svg>
+      </button>
+    </div>
+  )
+}
+
+function SplitView({ tab, onSave, onChange, showTOC, editorViewRef }: SplitViewProps) {
   const [splitRatio, setSplitRatio] = useState(50)
   const [isDragging, setIsDragging] = useState(false)
   const containerRef = useState<HTMLDivElement | null>(null)
@@ -226,6 +410,7 @@ function SplitView({ tab, onSave, onChange, showTOC }: SplitViewProps) {
           tab={tab}
           onSave={onSave}
           onChange={onChange}
+          editorViewRef={editorViewRef}
         />
       </div>
 

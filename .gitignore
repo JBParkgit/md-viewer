@@ -4,3 +4,6 @@ dist-electron/
 out/
 *.log
 .DS_Store
+release/
+.omc/
+md-viewer.exe

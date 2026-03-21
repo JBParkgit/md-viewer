@@ -1,6 +1,6 @@
 import { app, BrowserWindow, ipcMain, dialog, nativeTheme, shell } from 'electron'
-import { join } from 'path'
-import { readdir, readFile, writeFile, stat } from 'fs/promises'
+import { join, basename, extname } from 'path'
+import { readdir, readFile, writeFile, stat, mkdir, copyFile } from 'fs/promises'
 import { statSync, existsSync } from 'fs'
 import Store from 'electron-store'
 import chokidar from 'chokidar'
@@ -12,6 +12,7 @@ interface StoreSchema {
   fontSize: number
   favorites: string[]
   recentFiles: string[]
+  fileTags: Record<string, string[]>
 }
 
 const store = new Store<StoreSchema>({
@@ -21,6 +22,7 @@ const store = new Store<StoreSchema>({
     fontSize: 16,
     favorites: [],
     recentFiles: [],
+    fileTags: {},
   },
 })
 
@@ -251,6 +253,16 @@ ipcMain.handle('fs:unwatchDir', (_e, dirPath: string) => {
   if (watcher) { watcher.close(); dirWatchers.delete(dirPath) }
 })
 
+// ── IPC: Read File Binary ────────────────────────────────────────────────────
+ipcMain.handle('fs:readFileBinary', async (_e, filePath: string) => {
+  try {
+    const buffer = await readFile(filePath)
+    return { success: true, data: buffer.buffer }
+  } catch (err: unknown) {
+    return { success: false, error: String(err) }
+  }
+})
+
 // ── IPC: Store ───────────────────────────────────────────────────────────────
 ipcMain.handle('store:get', (_e, key: keyof StoreSchema) => {
   return store.get(key)
@@ -296,4 +308,169 @@ ipcMain.handle('fs:stat', (_e, filePath: string) => {
   } catch {
     return null
   }
+})
+
+// ── IPC: Copy image to ./images/ dir ────────────────────────────────────────
+ipcMain.handle('fs:copyImageToDir', async (_e, srcPath: string, destDir: string) => {
+  try {
+    const imagesDir = join(destDir, 'images')
+    if (!existsSync(imagesDir)) {
+      await mkdir(imagesDir, { recursive: true })
+    }
+    let fileName = basename(srcPath)
+    let destPath = join(imagesDir, fileName)
+    let counter = 1
+    while (existsSync(destPath)) {
+      const ext = extname(fileName)
+      const name = fileName.slice(0, -ext.length)
+      destPath = join(imagesDir, `${name}_${counter}${ext}`)
+      counter++
+    }
+    await copyFile(srcPath, destPath)
+    return { success: true, fileName: basename(destPath) }
+  } catch (err: unknown) {
+    return { success: false, error: String(err) }
+  }
+})
+
+// ── IPC: List images in project ─────────────────────────────────────────────
+const IMAGE_EXTENSIONS = ['.png', '.jpg', '.jpeg', '.gif', '.webp', '.svg', '.bmp', '.ico']
+
+async function collectImages(dirPath: string, results: string[], depth = 0) {
+  if (depth > 6) return
+  try {
+    const entries = await readdir(dirPath, { withFileTypes: true })
+    for (const entry of entries) {
+      if (entry.name.startsWith('.')) continue
+      const fullPath = join(dirPath, entry.name)
+      if (entry.isDirectory()) {
+        await collectImages(fullPath, results, depth + 1)
+      } else if (entry.isFile()) {
+        const ext = extname(entry.name).toLowerCase()
+        if (IMAGE_EXTENSIONS.includes(ext)) {
+          results.push(fullPath)
+        }
+      }
+    }
+  } catch {}
+}
+
+ipcMain.handle('fs:listImages', async (_e, dirPath: string) => {
+  const results: string[] = []
+  await collectImages(dirPath, results)
+  return results
+})
+
+// ── IPC: List videos in project ──────────────────────────────────────────────
+const VIDEO_EXTENSIONS = ['.mp4', '.webm', '.ogg', '.mov', '.avi', '.mkv']
+
+async function collectVideos(dirPath: string, results: string[], depth = 0) {
+  if (depth > 6) return
+  try {
+    const entries = await readdir(dirPath, { withFileTypes: true })
+    for (const entry of entries) {
+      if (entry.name.startsWith('.')) continue
+      const fullPath = join(dirPath, entry.name)
+      if (entry.isDirectory()) {
+        await collectVideos(fullPath, results, depth + 1)
+      } else if (entry.isFile()) {
+        const ext = extname(entry.name).toLowerCase()
+        if (VIDEO_EXTENSIONS.includes(ext)) {
+          results.push(fullPath)
+        }
+      }
+    }
+  } catch {}
+}
+
+ipcMain.handle('fs:listVideos', async (_e, dirPath: string) => {
+  const results: string[] = []
+  await collectVideos(dirPath, results)
+  return results
+})
+
+// ── IPC: Create file ────────────────────────────────────────────────────────
+ipcMain.handle('fs:createFile', async (_e, filePath: string, content: string = '') => {
+  try {
+    if (existsSync(filePath)) {
+      return { success: false, error: '이미 존재하는 파일입니다.' }
+    }
+    await writeFile(filePath, content, 'utf-8')
+    return { success: true }
+  } catch (err: unknown) {
+    return { success: false, error: String(err) }
+  }
+})
+
+// ── IPC: Create directory ───────────────────────────────────────────────────
+ipcMain.handle('fs:createDir', async (_e, dirPath: string) => {
+  try {
+    if (existsSync(dirPath)) {
+      return { success: false, error: '이미 존재하는 폴더입니다.' }
+    }
+    await mkdir(dirPath, { recursive: true })
+    return { success: true }
+  } catch (err: unknown) {
+    return { success: false, error: String(err) }
+  }
+})
+
+// ── IPC: Rename file/folder ──────────────────────────────────────────────────
+ipcMain.handle('fs:rename', async (_e, oldPath: string, newName: string) => {
+  try {
+    const dir = join(oldPath, '..')
+    const newPath = join(dir, newName)
+    if (oldPath === newPath) return { success: true, newPath: oldPath }
+    if (existsSync(newPath)) {
+      return { success: false, error: '같은 이름의 파일/폴더가 이미 존재합니다.' }
+    }
+    const { rename } = await import('fs/promises')
+    await rename(oldPath, newPath)
+    return { success: true, newPath }
+  } catch (err: unknown) {
+    return { success: false, error: String(err) }
+  }
+})
+
+// ── IPC: Delete file (move to trash) ────────────────────────────────────────
+ipcMain.handle('fs:deleteFile', async (_e, filePath: string) => {
+  try {
+    await shell.trashItem(filePath)
+    return { success: true }
+  } catch (err: unknown) {
+    return { success: false, error: String(err) }
+  }
+})
+
+// ── IPC: Move file/folder ────────────────────────────────────────────────────
+ipcMain.handle('fs:move', async (_e, srcPath: string, destDir: string) => {
+  try {
+    const name = basename(srcPath)
+    let destPath = join(destDir, name)
+    if (srcPath === destPath) return { success: true }
+    // Check if destination already exists
+    let counter = 1
+    while (existsSync(destPath)) {
+      const ext = extname(name)
+      const base = name.slice(0, -ext.length || undefined)
+      destPath = join(destDir, `${base}_${counter}${ext}`)
+      counter++
+    }
+    const { rename } = await import('fs/promises')
+    await rename(srcPath, destPath)
+    return { success: true, newPath: destPath }
+  } catch (err: unknown) {
+    return { success: false, error: String(err) }
+  }
+})
+
+// ── IPC: Save folder dialog (for creating new project) ─────────────────────
+ipcMain.handle('dialog:saveFolder', async () => {
+  if (!mainWindow) return null
+  const result = await dialog.showOpenDialog(mainWindow, {
+    properties: ['openDirectory', 'createDirectory'],
+    title: '새 프로젝트 폴더 위치 선택',
+  })
+  if (result.canceled || result.filePaths.length === 0) return null
+  return result.filePaths[0]
 })
