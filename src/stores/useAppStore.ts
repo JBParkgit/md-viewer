@@ -68,8 +68,8 @@ interface AppStore {
   setLastOpenedDir: (projectId: string, dirPath: string) => void
 
   // Sidebar tab
-  sidebarTab: 'tree' | 'favorites' | 'recent' | 'gallery'
-  setSidebarTab: (tab: 'tree' | 'favorites' | 'recent' | 'gallery') => void
+  sidebarTab: 'tree' | 'favorites' | 'recent' | 'gallery' | 'tags' | 'git'
+  setSidebarTab: (tab: 'tree' | 'favorites' | 'recent' | 'gallery' | 'tags' | 'git') => void
 
   // Favorites
   favorites: string[]
@@ -84,6 +84,11 @@ interface AppStore {
   fileTags: Record<string, string[]>
   addFileTag: (filePath: string, tagId: string) => void
   removeFileTag: (filePath: string, tagId: string) => void
+
+  // Tag colors
+  tagColors: Record<string, string>
+  setTagColor: (tag: string, color: string) => void
+  removeTagColor: (tag: string) => void
 
   // Settings
   darkMode: 'system' | 'light' | 'dark'
@@ -312,6 +317,24 @@ export const useAppStore = create<AppStore>((set, get) => ({
       else updated[filePath] = filtered
       window.electronAPI.storeSet('fileTags', updated)
       return { fileTags: updated }
+    })
+  },
+
+  // ── Tag colors ──────────────────────────────────────────────────────────
+  tagColors: {},
+  setTagColor: (tag, color) => {
+    set(s => {
+      const updated = { ...s.tagColors, [tag]: color }
+      window.electronAPI.storeSet('tagColors', updated)
+      return { tagColors: updated }
+    })
+  },
+  removeTagColor: (tag) => {
+    set(s => {
+      const updated = { ...s.tagColors }
+      delete updated[tag]
+      window.electronAPI.storeSet('tagColors', updated)
+      return { tagColors: updated }
     })
   },
 

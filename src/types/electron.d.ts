@@ -29,6 +29,7 @@ export interface ElectronAPI {
   copyImageToDir: (srcPath: string, destDir: string) => Promise<{ success: boolean; fileName?: string; error?: string }>
   listImages: (dirPath: string) => Promise<string[]>
   listVideos: (dirPath: string) => Promise<string[]>
+  collectTags: (dirPath: string) => Promise<{ filePath: string; fileName: string; tags: string[] }[]>
   createFile: (filePath: string, content?: string) => Promise<{ success: boolean; error?: string }>
   renameFile: (oldPath: string, newName: string) => Promise<{ success: boolean; newPath?: string; error?: string }>
   deleteFile: (filePath: string) => Promise<{ success: boolean; error?: string }>
@@ -38,6 +39,24 @@ export interface ElectronAPI {
   getPathForFile: (file: File) => string
   showItemInFolder: (path: string) => Promise<void>
   openPath: (path: string) => Promise<string | null>
+  startDrag: (filePath: string) => void
+  copyImageToClipboard: (filePath: string) => Promise<{ success: boolean; error?: string }>
+  // Git
+  gitIsRepo: (cwd: string) => Promise<boolean>
+  gitInit: (cwd: string) => Promise<{ success: boolean; output?: string; error?: string }>
+  gitStatus: (cwd: string) => Promise<{ success: boolean; output?: string; error?: string }>
+  gitBranch: (cwd: string) => Promise<{ success: boolean; output?: string; error?: string }>
+  gitStage: (cwd: string, file: string) => Promise<{ success: boolean; output?: string; error?: string }>
+  gitUnstage: (cwd: string, file: string) => Promise<{ success: boolean; output?: string; error?: string }>
+  gitStageAll: (cwd: string) => Promise<{ success: boolean; output?: string; error?: string }>
+  gitDiscard: (cwd: string, file: string) => Promise<{ success: boolean; output?: string; error?: string }>
+  gitCommit: (cwd: string, message: string) => Promise<{ success: boolean; output?: string; error?: string }>
+  gitLog: (cwd: string) => Promise<{ success: boolean; output?: string; error?: string }>
+  gitPull: (cwd: string) => Promise<{ success: boolean; output?: string; error?: string }>
+  gitPush: (cwd: string) => Promise<{ success: boolean; output?: string; error?: string }>
+  gitRemoteAdd: (cwd: string, url: string) => Promise<{ success: boolean; output?: string; error?: string }>
+  gitRemoteGet: (cwd: string) => Promise<{ success: boolean; output?: string; error?: string }>
+
   storeGet: (key: string) => Promise<unknown>
   storeSet: (key: string, value: unknown) => Promise<void>
   setTheme: (mode: 'system' | 'light' | 'dark') => Promise<void>

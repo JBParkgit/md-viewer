@@ -2,6 +2,7 @@ import { useCallback, useEffect, useRef, useState } from 'react'
 import { EditorView } from '@uiw/react-codemirror'
 import { useAppStore, type Tab } from '../stores/useAppStore'
 import { markRecentlySaved } from '../utils/recentSave'
+import { parseFrontmatterTags, updateFrontmatterTags } from '../utils/frontmatter'
 import MarkdownView from './MarkdownView'
 import LiveEditor from './LiveEditor'
 import TableOfContents from './TableOfContents'
@@ -139,6 +140,9 @@ export default function MarkdownEditor({ tab }: Props) {
         )}
       </div>
 
+      {/* Tag bar */}
+      <TagBar tab={tab} onSave={handleSave} />
+
       {/* File changed on disk banner */}
       {tab.fileChangedOnDisk && (
         <div className="flex items-center gap-2 px-4 py-2 bg-orange-50 dark:bg-orange-900/30 border-b border-orange-200 dark:border-orange-700 text-xs text-orange-700 dark:text-orange-300 flex-shrink-0">
@@ -213,6 +217,165 @@ export default function MarkdownEditor({ tab }: Props) {
           }}
           onClose={() => setShowTableEditor(false)}
         />
+      )}
+    </div>
+  )
+}
+
+// ── Tag Bar ───────────────────────────────────────────────────────────────
+function TagBar({ tab, onSave }: { tab: Tab; onSave: (content: string) => void }) {
+  const tags = parseFrontmatterTags(tab.content)
+  const tagColors = useAppStore(s => s.tagColors)
+  const projects = useAppStore(s => s.projects)
+  const [inputVisible, setInputVisible] = useState(false)
+  const [inputValue, setInputValue] = useState('')
+  const [suggestions, setSuggestions] = useState<string[]>([])
+  const [selectedIdx, setSelectedIdx] = useState(-1)
+  const inputRef = useRef<HTMLInputElement>(null)
+  const [allTags, setAllTags] = useState<string[]>([])
+
+  // Collect all existing tags for autocomplete
+  useEffect(() => {
+    const load = async () => {
+      const tagSet = new Set<string>()
+      for (const p of projects) {
+        try {
+          const results = await window.electronAPI.collectTags(p.path)
+          for (const r of results) r.tags.forEach(t => tagSet.add(t))
+        } catch {}
+      }
+      setAllTags([...tagSet].sort())
+    }
+    load()
+  }, [projects])
+
+  useEffect(() => {
+    if (inputVisible) setTimeout(() => inputRef.current?.focus(), 0)
+  }, [inputVisible])
+
+  // Update suggestions when input changes
+  useEffect(() => {
+    if (!inputValue.trim()) { setSuggestions([]); setSelectedIdx(-1); return }
+    const q = inputValue.toLowerCase()
+    const filtered = allTags.filter(t => t.toLowerCase().includes(q) && !tags.includes(t))
+    setSuggestions(filtered.slice(0, 8))
+    setSelectedIdx(-1)
+  }, [inputValue, allTags, tags])
+
+  const addTag = (tag: string) => {
+    const t = tag.trim()
+    if (!t || tags.includes(t)) return
+    const updated = updateFrontmatterTags(tab.content, [...tags, t])
+    useAppStore.getState().updateTabContent(tab.id, updated)
+    onSave(updated)
+  }
+
+  const removeTag = (tag: string) => {
+    const updated = updateFrontmatterTags(tab.content, tags.filter(t => t !== tag))
+    useAppStore.getState().updateTabContent(tab.id, updated)
+    onSave(updated)
+  }
+
+  const commitInput = (value?: string) => {
+    const v = value ?? inputValue
+    if (v.trim()) addTag(v)
+    setInputValue('')
+    setSuggestions([])
+  }
+
+  const handleKeyDown = (e: React.KeyboardEvent) => {
+    if (e.key === 'Enter') {
+      e.preventDefault()
+      if (selectedIdx >= 0 && selectedIdx < suggestions.length) {
+        commitInput(suggestions[selectedIdx])
+      } else {
+        commitInput()
+      }
+    } else if (e.key === 'Escape') {
+      setInputVisible(false)
+      setInputValue('')
+      setSuggestions([])
+    } else if (e.key === 'ArrowDown') {
+      e.preventDefault()
+      setSelectedIdx(i => Math.min(i + 1, suggestions.length - 1))
+    } else if (e.key === 'ArrowUp') {
+      e.preventDefault()
+      setSelectedIdx(i => Math.max(i - 1, -1))
+    }
+  }
+
+  const getColors = (tag: string) => {
+    const colorId = tagColors[tag]
+    const colorMap: Record<string, { bg: string; text: string }> = {
+      blue: { bg: 'bg-blue-100 dark:bg-blue-900/40', text: 'text-blue-700 dark:text-blue-300' },
+      green: { bg: 'bg-green-100 dark:bg-green-900/40', text: 'text-green-700 dark:text-green-300' },
+      red: { bg: 'bg-red-100 dark:bg-red-900/40', text: 'text-red-700 dark:text-red-300' },
+      purple: { bg: 'bg-purple-100 dark:bg-purple-900/40', text: 'text-purple-700 dark:text-purple-300' },
+      amber: { bg: 'bg-amber-100 dark:bg-amber-900/40', text: 'text-amber-700 dark:text-amber-300' },
+      cyan: { bg: 'bg-cyan-100 dark:bg-cyan-900/40', text: 'text-cyan-700 dark:text-cyan-300' },
+      rose: { bg: 'bg-rose-100 dark:bg-rose-900/40', text: 'text-rose-700 dark:text-rose-300' },
+      gray: { bg: 'bg-gray-100 dark:bg-gray-700', text: 'text-gray-700 dark:text-gray-300' },
+    }
+    return colorMap[colorId] || colorMap.blue
+  }
+
+  return (
+    <div className="flex items-center gap-1 px-4 py-1 border-b border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-800/50 flex-shrink-0 min-h-[28px] flex-wrap">
+      <svg className="w-3 h-3 text-gray-400 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M7 7h.01M7 3h5c.512 0 1.024.195 1.414.586l7 7a2 2 0 010 2.828l-7 7a2 2 0 01-2.828 0l-7-7A1.994 1.994 0 013 12V7a4 4 0 014-4z" />
+      </svg>
+      {tags.map(tag => {
+        const c = getColors(tag)
+        return (
+          <span
+            key={tag}
+            className={`inline-flex items-center gap-0.5 px-2 py-0.5 rounded-full text-xs ${c.bg} ${c.text}`}
+          >
+            {tag}
+            <button
+              onClick={() => removeTag(tag)}
+              className="w-3 h-3 flex items-center justify-center rounded-full hover:opacity-70 ml-0.5"
+            >
+              ×
+            </button>
+          </span>
+        )
+      })}
+      {inputVisible ? (
+        <div className="relative">
+          <input
+            ref={inputRef}
+            value={inputValue}
+            onChange={e => setInputValue(e.target.value)}
+            onKeyDown={handleKeyDown}
+            onBlur={() => setTimeout(() => { commitInput(); setInputVisible(false); setSuggestions([]) }, 150)}
+            placeholder="태그 입력..."
+            className="text-xs px-1.5 py-0.5 rounded border border-blue-300 dark:border-blue-600 bg-white dark:bg-gray-700 focus:outline-none focus:ring-1 focus:ring-blue-400 w-28"
+          />
+          {suggestions.length > 0 && (
+            <div className="absolute left-0 top-full mt-1 bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-600 rounded-lg shadow-xl py-1 min-w-32 z-50">
+              {suggestions.map((s, i) => (
+                <button
+                  key={s}
+                  onMouseDown={(e) => { e.preventDefault(); commitInput(s) }}
+                  className={`w-full text-left px-2.5 py-1 text-xs ${
+                    i === selectedIdx ? 'bg-blue-100 dark:bg-blue-900/40 text-blue-700 dark:text-blue-300' : 'hover:bg-gray-100 dark:hover:bg-gray-700'
+                  }`}
+                >
+                  # {s}
+                </button>
+              ))}
+            </div>
+          )}
+        </div>
+      ) : (
+        <button
+          onClick={() => setInputVisible(true)}
+          className="text-xs text-gray-400 hover:text-blue-500 px-1"
+          title="태그 추가"
+        >
+          + 태그
+        </button>
       )}
     </div>
   )

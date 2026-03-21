@@ -113,6 +113,8 @@ export default function ImageGallery({ onOpenFile }: Props) {
                     <div
                       key={item.path}
                       onClick={() => onOpenFile(item.path, fileName)}
+                      draggable
+                      onDragStart={(e) => { e.preventDefault(); window.electronAPI.startDrag(item.path) }}
                       className="group relative cursor-pointer rounded-lg overflow-hidden border border-gray-200 dark:border-gray-600 hover:border-blue-400 dark:hover:border-blue-500 transition-colors bg-gray-100 dark:bg-gray-700 aspect-square"
                       title={item.path}
                     >

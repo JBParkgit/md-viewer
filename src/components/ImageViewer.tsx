@@ -110,6 +110,8 @@ export default function ImageViewer({ tab }: Props) {
   // ── Pan (drag) ────────────────────────────────────────────────────────────
   const handleMouseDown = (e: MouseEvent) => {
     if (e.button !== 0) return
+    // Don't start pan if clicking directly on the image (allow native drag)
+    if (e.target === imgRef.current) return
     e.preventDefault()
     dragging.current = true
     lastMouse.current = { x: e.clientX, y: e.clientY }
@@ -126,6 +128,30 @@ export default function ImageViewer({ tab }: Props) {
   }
 
   const handleMouseUp = () => { dragging.current = false }
+
+  // ── Context menu (right-click copy) ─────────────────────────────────────
+  const [ctxMenu, setCtxMenu] = useState<{ x: number; y: number } | null>(null)
+  const [copySuccess, setCopySuccess] = useState(false)
+
+  const handleContextMenu = (e: MouseEvent) => {
+    e.preventDefault()
+    setCtxMenu({ x: e.clientX, y: e.clientY })
+  }
+
+  const handleCopyImage = async () => {
+    setCtxMenu(null)
+    const result = await window.electronAPI.copyImageToClipboard(tab.filePath)
+    if (result.success) {
+      setCopySuccess(true)
+      setTimeout(() => setCopySuccess(false), 1500)
+    }
+  }
+
+  // ── Drag to external app ────────────────────────────────────────────────
+  const handleImgDragStart = (e: React.DragEvent) => {
+    e.preventDefault()
+    window.electronAPI.startDrag(tab.filePath)
+  }
 
   // ── Background styles ─────────────────────────────────────────────────────
   const bgClass = {
@@ -255,6 +281,7 @@ export default function ImageViewer({ tab }: Props) {
         onMouseMove={handleMouseMove}
         onMouseUp={handleMouseUp}
         onMouseLeave={handleMouseUp}
+        onContextMenu={handleContextMenu}
         style={{ cursor: dragging.current ? 'grabbing' : 'grab' }}
       >
         <img
@@ -262,7 +289,8 @@ export default function ImageViewer({ tab }: Props) {
           src={src}
           alt={tab.fileName}
           onLoad={handleImgLoad}
-          draggable={false}
+          draggable
+          onDragStart={handleImgDragStart}
           style={{
             transform: `translate(${offset.x}px, ${offset.y}px) scale(${scale})`,
             transformOrigin: 'center center',
@@ -273,6 +301,52 @@ export default function ImageViewer({ tab }: Props) {
           }}
         />
       </div>
+
+      {/* Context menu */}
+      {ctxMenu && (
+        <>
+          <div className="fixed inset-0 z-40" onClick={() => setCtxMenu(null)} />
+          <div
+            className="fixed z-50 bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-600 rounded-lg shadow-xl py-1 min-w-40"
+            style={{ left: ctxMenu.x, top: ctxMenu.y }}
+          >
+            <button
+              onClick={handleCopyImage}
+              className="w-full flex items-center gap-2 px-3 py-1.5 text-xs hover:bg-gray-100 dark:hover:bg-gray-700 text-left"
+            >
+              <svg className="w-3.5 h-3.5 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 5H6a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2v-1M8 5a2 2 0 002 2h2a2 2 0 002-2M8 5a2 2 0 012-2h2a2 2 0 012 2m0 0h2a2 2 0 012 2v3m2 4H10m0 0l3-3m-3 3l3 3" />
+              </svg>
+              이미지 복사
+            </button>
+            <button
+              onClick={() => { setCtxMenu(null); window.electronAPI.showItemInFolder(tab.filePath) }}
+              className="w-full flex items-center gap-2 px-3 py-1.5 text-xs hover:bg-gray-100 dark:hover:bg-gray-700 text-left"
+            >
+              <svg className="w-3.5 h-3.5 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 7a2 2 0 012-2h4l2 2h8a2 2 0 012 2v9a2 2 0 01-2 2H5a2 2 0 01-2-2V7z" />
+              </svg>
+              탐색기에서 열기
+            </button>
+            <button
+              onClick={() => { setCtxMenu(null); window.electronAPI.openPath(tab.filePath) }}
+              className="w-full flex items-center gap-2 px-3 py-1.5 text-xs hover:bg-gray-100 dark:hover:bg-gray-700 text-left"
+            >
+              <svg className="w-3.5 h-3.5 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14" />
+              </svg>
+              기본 앱으로 열기
+            </button>
+          </div>
+        </>
+      )}
+
+      {/* Copy success toast */}
+      {copySuccess && (
+        <div className="absolute top-14 left-1/2 -translate-x-1/2 px-3 py-1.5 bg-green-600 text-white text-xs rounded-lg shadow-lg z-50">
+          클립보드에 복사됨
+        </div>
+      )}
 
       {/* Status bar */}
       {imgInfo && (

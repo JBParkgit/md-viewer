@@ -27,13 +27,14 @@ export default function App() {
   // ── Initialize from electron-store ────────────────────────────────────────
   useEffect(() => {
     const init = async () => {
-      const [savedDark, savedSize, savedFavs, savedRecent, savedProjects, savedTags] = await Promise.all([
+      const [savedDark, savedSize, savedFavs, savedRecent, savedProjects, savedTags, savedTagColors] = await Promise.all([
         window.electronAPI.storeGet('darkMode'),
         window.electronAPI.storeGet('fontSize'),
         window.electronAPI.storeGet('favorites'),
         window.electronAPI.storeGet('recentFiles'),
         window.electronAPI.storeGet('projects'),
         window.electronAPI.storeGet('fileTags'),
+        window.electronAPI.storeGet('tagColors'),
       ])
 
       const dark = (savedDark as string) || 'system'
@@ -42,6 +43,7 @@ export default function App() {
       const recent = (savedRecent as { path: string; name: string }[]) || []
       const projs = (savedProjects as { path: string; name: string }[]) || []
       const tags = (savedTags as Record<string, string[]>) || {}
+      const tagColors = (savedTagColors as Record<string, string>) || {}
 
       document.documentElement.style.setProperty('--md-font-size', `${size}px`)
 
@@ -67,6 +69,7 @@ export default function App() {
         recentFiles: recent,
         projects: restoredProjects,
         fileTags: tags,
+        tagColors,
       })
     }
     init()

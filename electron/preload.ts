@@ -26,6 +26,7 @@ contextBridge.exposeInMainWorld('electronAPI', {
   copyImageToDir: (srcPath: string, destDir: string) => ipcRenderer.invoke('fs:copyImageToDir', srcPath, destDir),
   listImages: (dirPath: string) => ipcRenderer.invoke('fs:listImages', dirPath),
   listVideos: (dirPath: string) => ipcRenderer.invoke('fs:listVideos', dirPath),
+  collectTags: (dirPath: string) => ipcRenderer.invoke('fs:collectTags', dirPath),
   createFile: (filePath: string, content?: string) => ipcRenderer.invoke('fs:createFile', filePath, content ?? ''),
   renameFile: (oldPath: string, newName: string) => ipcRenderer.invoke('fs:rename', oldPath, newName),
   deleteFile: (filePath: string) => ipcRenderer.invoke('fs:deleteFile', filePath),
@@ -34,9 +35,27 @@ contextBridge.exposeInMainWorld('electronAPI', {
   saveFolder: () => ipcRenderer.invoke('dialog:saveFolder'),
   showItemInFolder: (path: string) => ipcRenderer.invoke('shell:showItemInFolder', path),
   openPath: (path: string) => ipcRenderer.invoke('shell:openPath', path),
+  startDrag: (filePath: string) => ipcRenderer.send('native:startDrag', filePath),
+  copyImageToClipboard: (filePath: string) => ipcRenderer.invoke('clipboard:copyImage', filePath),
 
   // File path from dropped File object
   getPathForFile: (file: File) => webUtils.getPathForFile(file),
+
+  // Git
+  gitIsRepo: (cwd: string) => ipcRenderer.invoke('git:isRepo', cwd),
+  gitInit: (cwd: string) => ipcRenderer.invoke('git:init', cwd),
+  gitStatus: (cwd: string) => ipcRenderer.invoke('git:status', cwd),
+  gitBranch: (cwd: string) => ipcRenderer.invoke('git:branch', cwd),
+  gitStage: (cwd: string, file: string) => ipcRenderer.invoke('git:stage', cwd, file),
+  gitUnstage: (cwd: string, file: string) => ipcRenderer.invoke('git:unstage', cwd, file),
+  gitStageAll: (cwd: string) => ipcRenderer.invoke('git:stageAll', cwd),
+  gitDiscard: (cwd: string, file: string) => ipcRenderer.invoke('git:discard', cwd, file),
+  gitCommit: (cwd: string, message: string) => ipcRenderer.invoke('git:commit', cwd, message),
+  gitLog: (cwd: string) => ipcRenderer.invoke('git:log', cwd),
+  gitPull: (cwd: string) => ipcRenderer.invoke('git:pull', cwd),
+  gitPush: (cwd: string) => ipcRenderer.invoke('git:push', cwd),
+  gitRemoteAdd: (cwd: string, url: string) => ipcRenderer.invoke('git:remoteAdd', cwd, url),
+  gitRemoteGet: (cwd: string) => ipcRenderer.invoke('git:remoteGet', cwd),
 
   // Store
   storeGet: (key: string) => ipcRenderer.invoke('store:get', key),

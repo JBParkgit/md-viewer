@@ -2,6 +2,7 @@ import { useState, useRef } from 'react'
 import { useAppStore, PREDEFINED_TAGS } from '../stores/useAppStore'
 import { getFileGroup, FileTypeIcon } from '../utils/fileType'
 import type { FileNode } from '../types/electron'
+import type { GitStatusMap } from './ProjectTree'
 
 // ── Highlight matched text ─────────────────────────────────────────────────
 
@@ -31,9 +32,28 @@ interface FileRowProps {
   projectId?: string
   openDirs?: Set<string>
   toggleDir?: (path: string, open: boolean) => void
+  gitStatusMap?: GitStatusMap
+  projectPath?: string
 }
 
-function FileRow({ node, onOpenFile, onOpenFilePinned, searchQuery, depth, projectId, openDirs, toggleDir }: FileRowProps) {
+function getGitDot(node: FileNode, gitStatusMap?: GitStatusMap, projectPath?: string): { color: string; title: string } | null {
+  if (!gitStatusMap || !projectPath) return null
+  // Compute relative path from project root
+  const sep = projectPath.includes('/') ? '/' : '\\'
+  const prefix = projectPath.endsWith(sep) ? projectPath : projectPath + sep
+  const rel = node.path.startsWith(prefix) ? node.path.slice(prefix.length).replace(/\\/g, '/') : null
+  if (!rel) return null
+  const entry = gitStatusMap[rel]
+  if (!entry) return null
+  const st = entry.worktree !== ' ' && entry.worktree !== '?' ? entry.worktree : entry.index
+  if (st === 'M') return { color: 'bg-orange-400', title: '수정됨' }
+  if (st === 'A' || entry.index === '?' || entry.worktree === '?') return { color: 'bg-green-400', title: '새 파일' }
+  if (st === 'D') return { color: 'bg-red-400', title: '삭제됨' }
+  if (st === 'R') return { color: 'bg-blue-400', title: '이름변경' }
+  return { color: 'bg-gray-400', title: st }
+}
+
+function FileRow({ node, onOpenFile, onOpenFilePinned, searchQuery, depth, projectId, openDirs, toggleDir, gitStatusMap, projectPath }: FileRowProps) {
   const controlled = openDirs !== undefined && toggleDir !== undefined
   const [localOpen, setLocalOpen] = useState(!!searchQuery)
   const open = controlled ? openDirs.has(node.path) : localOpen
@@ -96,9 +116,17 @@ function FileRow({ node, onOpenFile, onOpenFilePinned, searchQuery, depth, proje
 
   // Drag-and-drop: make items draggable
   const handleDragStart = (e: React.DragEvent) => {
-    e.dataTransfer.effectAllowed = 'copyMove'
-    e.dataTransfer.setData('application/x-filepath', node.path)
-    e.stopPropagation()
+    const group = getFileGroup(node.name)
+    if (group === 'image' || group === 'video') {
+      // Native OS drag for external apps (PPT, Word, etc.)
+      e.preventDefault()
+      window.electronAPI.startDrag(node.path)
+    } else {
+      // Internal drag for file moves
+      e.dataTransfer.effectAllowed = 'copyMove'
+      e.dataTransfer.setData('application/x-filepath', node.path)
+      e.stopPropagation()
+    }
   }
 
   // Drop target handler (for directories)
@@ -208,6 +236,8 @@ function FileRow({ node, onOpenFile, onOpenFilePinned, searchQuery, depth, proje
                 projectId={projectId}
                 openDirs={openDirs}
                 toggleDir={toggleDir}
+                gitStatusMap={gitStatusMap}
+                projectPath={projectPath}
               />
             ))}
           </div>
@@ -281,6 +311,11 @@ function FileRow({ node, onOpenFile, onOpenFilePinned, searchQuery, depth, proje
             <path d="M11.049 2.927c.3-.921 1.603-.921 1.902 0l1.519 4.674a1 1 0 00.95.69h4.915c.969 0 1.371 1.24.588 1.81l-3.976 2.888a1 1 0 00-.363 1.118l1.518 4.674c.3.922-.755 1.688-1.538 1.118l-3.976-2.888a1 1 0 00-1.176 0l-3.976 2.888c-.783.57-1.838-.197-1.538-1.118l1.518-4.674a1 1 0 00-.363-1.118l-3.976-2.888c-.784-.57-.38-1.81.588-1.81h4.914a1 1 0 00.951-.69l1.519-4.674z" />
           </svg>
         )}
+        {(() => {
+          const dot = getGitDot(node, gitStatusMap, projectPath)
+          if (!dot) return null
+          return <span className={`w-2 h-2 rounded-full flex-shrink-0 ${dot.color}`} title={dot.title} />
+        })()}
       </div>
 
       {/* Context menu */}
@@ -381,6 +416,69 @@ function FileRow({ node, onOpenFile, onOpenFilePinned, searchQuery, depth, proje
                 </div>
               )}
             </div>
+            {(() => {
+              const dot = getGitDot(node, gitStatusMap, projectPath)
+              if (!dot || !projectPath) return null
+              const sep = projectPath.includes('/') ? '/' : '\\'
+              const prefix = projectPath.endsWith(sep) ? projectPath : projectPath + sep
+              const rel = node.path.startsWith(prefix) ? node.path.slice(prefix.length).replace(/\\/g, '/') : null
+              if (!rel) return null
+              const entry = gitStatusMap?.[rel]
+              if (!entry) return null
+              return (
+                <>
+                  <div className="my-1 border-t border-gray-100 dark:border-gray-700" />
+                  {entry.worktree !== ' ' && entry.index !== '?' ? (
+                    <button
+                      onClick={async () => { setContextMenu(null); await window.electronAPI.gitStage(projectPath, rel) }}
+                      className="w-full flex items-center gap-2 px-3 py-1.5 text-xs hover:bg-gray-100 dark:hover:bg-gray-700 text-left"
+                    >
+                      <svg className="w-3.5 h-3.5 text-green-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
+                      </svg>
+                      Stage
+                    </button>
+                  ) : null}
+                  {entry.index !== ' ' && entry.index !== '?' ? (
+                    <button
+                      onClick={async () => { setContextMenu(null); await window.electronAPI.gitUnstage(projectPath, rel) }}
+                      className="w-full flex items-center gap-2 px-3 py-1.5 text-xs hover:bg-gray-100 dark:hover:bg-gray-700 text-left"
+                    >
+                      <svg className="w-3.5 h-3.5 text-orange-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M20 12H4" />
+                      </svg>
+                      Unstage
+                    </button>
+                  ) : null}
+                  {entry.index === '?' ? (
+                    <button
+                      onClick={async () => { setContextMenu(null); await window.electronAPI.gitStage(projectPath, rel) }}
+                      className="w-full flex items-center gap-2 px-3 py-1.5 text-xs hover:bg-gray-100 dark:hover:bg-gray-700 text-left"
+                    >
+                      <svg className="w-3.5 h-3.5 text-green-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
+                      </svg>
+                      Stage
+                    </button>
+                  ) : null}
+                  {entry.worktree === 'M' || entry.worktree === 'D' ? (
+                    <button
+                      onClick={async () => {
+                        setContextMenu(null)
+                        if (!window.confirm(`"${node.name}" 파일의 변경사항을 취소하시겠습니까?`)) return
+                        await window.electronAPI.gitDiscard(projectPath, rel)
+                      }}
+                      className="w-full flex items-center gap-2 px-3 py-1.5 text-xs hover:bg-red-50 dark:hover:bg-red-900/20 text-red-600 dark:text-red-400 text-left"
+                    >
+                      <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 10h10a8 8 0 018 8v2M3 10l6 6m-6-6l6-6" />
+                      </svg>
+                      변경 취소
+                    </button>
+                  ) : null}
+                </>
+              )
+            })()}
             <div className="my-1 border-t border-gray-100 dark:border-gray-700" />
             <button
               onClick={() => { setContextMenu(null); startRename() }}
@@ -429,9 +527,11 @@ interface Props {
   projectId?: string
   openDirs?: Set<string>
   toggleDir?: (path: string, open: boolean) => void
+  gitStatusMap?: GitStatusMap
+  projectPath?: string
 }
 
-export default function FileTree({ nodes, onOpenFile, onOpenFilePinned, searchQuery, depth = 0, projectId, openDirs, toggleDir }: Props) {
+export default function FileTree({ nodes, onOpenFile, onOpenFilePinned, searchQuery, depth = 0, projectId, openDirs, toggleDir, gitStatusMap, projectPath }: Props) {
   if (nodes.length === 0) {
     return (
       <div className="px-4 py-3 text-xs text-gray-400">
@@ -452,6 +552,8 @@ export default function FileTree({ nodes, onOpenFile, onOpenFilePinned, searchQu
           projectId={projectId}
           openDirs={openDirs}
           toggleDir={toggleDir}
+          gitStatusMap={gitStatusMap}
+          projectPath={projectPath}
         />
       ))}
     </div>

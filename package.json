@@ -1,7 +1,7 @@
 {
-  "name": "md-viewer",
+  "name": "docuflow",
   "version": "1.0.0",
-  "description": "Hospital Marketing Markdown Viewer & Editor",
+  "description": "Docuflow - Document Workspace & Editor",
   "main": "dist-electron/main.js",
   "scripts": {
     "dev": "electron-vite dev",
@@ -45,8 +45,8 @@
     "vite": "^5.4.11"
   },
   "build": {
-    "appId": "com.hospital.md-viewer",
-    "productName": "MD Viewer",
+    "appId": "com.docuflow.app",
+    "productName": "Docuflow",
     "directories": {
       "output": "release"
     },

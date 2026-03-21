@@ -1,7 +1,8 @@
-import { app, BrowserWindow, ipcMain, dialog, nativeTheme, shell } from 'electron'
+import { app, BrowserWindow, ipcMain, dialog, nativeTheme, shell, nativeImage, clipboard } from 'electron'
 import { join, basename, extname } from 'path'
 import { readdir, readFile, writeFile, stat, mkdir, copyFile } from 'fs/promises'
 import { statSync, existsSync } from 'fs'
+import { execFile } from 'child_process'
 import Store from 'electron-store'
 import chokidar from 'chokidar'
 
@@ -299,6 +300,30 @@ ipcMain.handle('shell:openPath', async (_e, filePath: string) => {
   return err || null  // null = success, string = error message
 })
 
+// ── IPC: Native drag to external apps ────────────────────────────────────────
+ipcMain.on('native:startDrag', (event, filePath: string) => {
+  try {
+    const icon = nativeImage.createFromPath(filePath).resize({ width: 64, height: 64 })
+    event.sender.startDrag({ file: filePath, icon })
+  } catch {
+    // For non-image files or if icon creation fails, use a blank icon
+    const icon = nativeImage.createEmpty()
+    event.sender.startDrag({ file: filePath, icon })
+  }
+})
+
+// ── IPC: Copy image to clipboard ─────────────────────────────────────────────
+ipcMain.handle('clipboard:copyImage', async (_e, filePath: string) => {
+  try {
+    const img = nativeImage.createFromPath(filePath)
+    if (img.isEmpty()) return { success: false, error: '이미지를 로드할 수 없습니다.' }
+    clipboard.writeImage(img)
+    return { success: true }
+  } catch (err: unknown) {
+    return { success: false, error: String(err) }
+  }
+})
+
 // ── IPC: Get file stats ──────────────────────────────────────────────────────
 ipcMain.handle('fs:stat', (_e, filePath: string) => {
   try {
@@ -389,6 +414,52 @@ ipcMain.handle('fs:listVideos', async (_e, dirPath: string) => {
   return results
 })
 
+// ── IPC: Collect tags from all .md files in project ─────────────────────────
+const FM_REGEX = /^---\r?\n([\s\S]*?)\r?\n---/
+
+function extractTags(content: string): string[] {
+  const match = content.match(FM_REGEX)
+  if (!match) return []
+  const yaml = match[1]
+  const inlineMatch = yaml.match(/^tags:\s*\[([^\]]*)\]/m)
+  if (inlineMatch) {
+    return inlineMatch[1].split(',').map(t => t.trim().replace(/^['"]|['"]$/g, '')).filter(Boolean)
+  }
+  const listMatch = yaml.match(/^tags:\s*\n((?:\s*-\s*.+\n?)*)/m)
+  if (listMatch) {
+    return listMatch[1].split('\n').map(l => l.replace(/^\s*-\s*/, '').trim().replace(/^['"]|['"]$/g, '')).filter(Boolean)
+  }
+  return []
+}
+
+async function collectTags(dirPath: string, results: { filePath: string; fileName: string; tags: string[] }[], depth = 0) {
+  if (depth > 6) return
+  try {
+    const entries = await readdir(dirPath, { withFileTypes: true })
+    for (const entry of entries) {
+      if (entry.name.startsWith('.')) continue
+      const fullPath = join(dirPath, entry.name)
+      if (entry.isDirectory()) {
+        await collectTags(fullPath, results, depth + 1)
+      } else if (entry.isFile() && extname(entry.name).toLowerCase() === '.md') {
+        try {
+          const content = await readFile(fullPath, 'utf-8')
+          const tags = extractTags(content)
+          if (tags.length > 0) {
+            results.push({ filePath: fullPath, fileName: entry.name, tags })
+          }
+        } catch {}
+      }
+    }
+  } catch {}
+}
+
+ipcMain.handle('fs:collectTags', async (_e, dirPath: string) => {
+  const results: { filePath: string; fileName: string; tags: string[] }[] = []
+  await collectTags(dirPath, results)
+  return results
+})
+
 // ── IPC: Create file ────────────────────────────────────────────────────────
 ipcMain.handle('fs:createFile', async (_e, filePath: string, content: string = '') => {
   try {
@@ -473,4 +544,73 @@ ipcMain.handle('dialog:saveFolder', async () => {
   })
   if (result.canceled || result.filePaths.length === 0) return null
   return result.filePaths[0]
+})
+
+// ── IPC: Git Operations ─────────────────────────────────────────────────────
+function gitExec(args: string[], cwd: string): Promise<{ success: boolean; output?: string; error?: string }> {
+  return new Promise((resolve) => {
+    execFile('git', args, { cwd, timeout: 30000 }, (err, stdout, stderr) => {
+      if (err) {
+        resolve({ success: false, error: stderr.trim() || err.message })
+      } else {
+        resolve({ success: true, output: stdout.trimEnd() })
+      }
+    })
+  })
+}
+
+ipcMain.handle('git:isRepo', async (_e, cwd: string) => {
+  return existsSync(join(cwd, '.git'))
+})
+
+ipcMain.handle('git:init', async (_e, cwd: string) => {
+  return gitExec(['init'], cwd)
+})
+
+ipcMain.handle('git:status', async (_e, cwd: string) => {
+  return gitExec(['status', '--porcelain', '-uall'], cwd)
+})
+
+ipcMain.handle('git:branch', async (_e, cwd: string) => {
+  return gitExec(['branch', '--show-current'], cwd)
+})
+
+ipcMain.handle('git:stage', async (_e, cwd: string, file: string) => {
+  return gitExec(['add', '--', file], cwd)
+})
+
+ipcMain.handle('git:unstage', async (_e, cwd: string, file: string) => {
+  return gitExec(['restore', '--staged', '--', file], cwd)
+})
+
+ipcMain.handle('git:stageAll', async (_e, cwd: string) => {
+  return gitExec(['add', '-A'], cwd)
+})
+
+ipcMain.handle('git:discard', async (_e, cwd: string, file: string) => {
+  return gitExec(['checkout', '--', file], cwd)
+})
+
+ipcMain.handle('git:commit', async (_e, cwd: string, message: string) => {
+  return gitExec(['commit', '-m', message], cwd)
+})
+
+ipcMain.handle('git:log', async (_e, cwd: string) => {
+  return gitExec(['log', '--oneline', '-10', '--format=%h %s (%cr)'], cwd)
+})
+
+ipcMain.handle('git:pull', async (_e, cwd: string) => {
+  return gitExec(['pull'], cwd)
+})
+
+ipcMain.handle('git:push', async (_e, cwd: string) => {
+  return gitExec(['push'], cwd)
+})
+
+ipcMain.handle('git:remoteAdd', async (_e, cwd: string, url: string) => {
+  return gitExec(['remote', 'add', 'origin', url], cwd)
+})
+
+ipcMain.handle('git:remoteGet', async (_e, cwd: string) => {
+  return gitExec(['remote', 'get-url', 'origin'], cwd)
 })

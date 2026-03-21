@@ -6,9 +6,27 @@ import { Prism as SyntaxHighlighter } from 'react-syntax-highlighter'
 import { oneLight, oneDark } from 'react-syntax-highlighter/dist/esm/styles/prism'
 import { useAppStore, type Tab } from '../stores/useAppStore'
 import ImageModal from './ImageModal'
+import { parseFrontmatterTags, stripFrontmatter } from '../utils/frontmatter'
+import { getTagColorClasses } from './TagPanel'
 
 interface Props {
   tab: Tab
+}
+
+function TagBadges({ tags }: { tags: string[] }) {
+  const tagColors = useAppStore(s => s.tagColors)
+  return (
+    <div className="flex flex-wrap gap-1.5 mb-4">
+      {tags.map(tag => {
+        const c = getTagColorClasses(tagColors, tag)
+        return (
+          <span key={tag} className={`inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium ${c.bg} ${c.text}`}>
+            # {tag}
+          </span>
+        )
+      })}
+    </div>
+  )
 }
 
 export default function MarkdownView({ tab }: Props) {
@@ -55,6 +73,10 @@ export default function MarkdownView({ tab }: Props) {
       onScroll={handleScroll}
     >
       <div className="max-w-4xl mx-auto px-8 py-8">
+        {/* Frontmatter tags */}
+        {parseFrontmatterTags(tab.content).length > 0 && (
+          <TagBadges tags={parseFrontmatterTags(tab.content)} />
+        )}
         <div className="markdown-body text-gray-900 dark:text-gray-100">
           <ReactMarkdown
             remarkPlugins={[remarkGfm]}
@@ -109,7 +131,7 @@ export default function MarkdownView({ tab }: Props) {
               },
             }}
           >
-            {tab.content}
+            {stripFrontmatter(tab.content)}
           </ReactMarkdown>
         </div>
       </div>
