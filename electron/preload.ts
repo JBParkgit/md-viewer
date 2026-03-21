@@ -43,6 +43,7 @@ contextBridge.exposeInMainWorld('electronAPI', {
 
   // Git
   gitIsRepo: (cwd: string) => ipcRenderer.invoke('git:isRepo', cwd),
+  gitClone: (url: string, destDir: string) => ipcRenderer.invoke('git:clone', url, destDir),
   gitInit: (cwd: string) => ipcRenderer.invoke('git:init', cwd),
   gitStatus: (cwd: string) => ipcRenderer.invoke('git:status', cwd),
   gitBranch: (cwd: string) => ipcRenderer.invoke('git:branch', cwd),
@@ -54,8 +55,18 @@ contextBridge.exposeInMainWorld('electronAPI', {
   gitLog: (cwd: string) => ipcRenderer.invoke('git:log', cwd),
   gitPull: (cwd: string) => ipcRenderer.invoke('git:pull', cwd),
   gitPush: (cwd: string) => ipcRenderer.invoke('git:push', cwd),
+  gitRevert: (cwd: string, hash: string) => ipcRenderer.invoke('git:revert', cwd, hash),
   gitRemoteAdd: (cwd: string, url: string) => ipcRenderer.invoke('git:remoteAdd', cwd, url),
   gitRemoteGet: (cwd: string) => ipcRenderer.invoke('git:remoteGet', cwd),
+  gitConfig: (cwd: string) => ipcRenderer.invoke('git:config', cwd),
+
+  // App close
+  onBeforeClose: (cb: () => void) => {
+    const handler = () => cb()
+    ipcRenderer.on('app:beforeClose', handler)
+    return () => ipcRenderer.removeListener('app:beforeClose', handler)
+  },
+  confirmClose: (canClose: boolean) => ipcRenderer.invoke('app:canClose', canClose),
 
   // Store
   storeGet: (key: string) => ipcRenderer.invoke('store:get', key),

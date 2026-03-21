@@ -108,7 +108,11 @@ export default function ProjectTree({ project, projectIndex, searchQuery, onOpen
           if (!line) continue
           const index = line[0]
           const worktree = line[1]
-          const file = line.slice(3)
+          let file = line.slice(3).replace(/\\/g, '/')
+          // Remove surrounding quotes (git quotes paths with special chars)
+          if (file.startsWith('"') && file.endsWith('"')) {
+            file = file.slice(1, -1)
+          }
           map[file] = { index, worktree }
           count++
         }
@@ -126,8 +130,18 @@ export default function ProjectTree({ project, projectIndex, searchQuery, onOpen
   }
 
   useEffect(() => {
-    if (!project.collapsed) loadGitStatus()
-  }, [project.path, project.collapsed])
+    loadGitStatus()
+  }, [project.path])
+
+  // Listen for git-status-changed events from GitPanel
+  useEffect(() => {
+    const handler = (e: Event) => {
+      const changedPath = (e as CustomEvent).detail
+      if (changedPath === project.path) loadGitStatus()
+    }
+    window.addEventListener('git-status-changed', handler)
+    return () => window.removeEventListener('git-status-changed', handler)
+  }, [project.path])
 
   // Focus input when rename mode starts
   useEffect(() => {
@@ -304,7 +318,15 @@ export default function ProjectTree({ project, projectIndex, searchQuery, onOpen
               {project.name}
             </span>
             {gitBranch !== null && (
-              <span className="flex items-center gap-1 flex-shrink-0">
+              <span
+                className="flex items-center gap-1 flex-shrink-0 cursor-pointer hover:opacity-80"
+                onClick={(e) => {
+                  e.stopPropagation()
+                  useAppStore.getState().setGitSelectedProject(project.path)
+                  useAppStore.getState().setSidebarTab('git')
+                }}
+                title="Git 탭으로 이동"
+              >
                 <span className="px-1.5 py-0 rounded text-[9px] bg-purple-100 dark:bg-purple-900/40 text-purple-600 dark:text-purple-300 font-mono">
                   {gitBranch || 'HEAD'}
                 </span>
@@ -349,7 +371,7 @@ export default function ProjectTree({ project, projectIndex, searchQuery, onOpen
               </svg>
             </button>
             <button
-              onClick={(e) => { e.stopPropagation(); loadNodes() }}
+              onClick={(e) => { e.stopPropagation(); loadNodes(); loadGitStatus() }}
               className="w-5 h-5 flex items-center justify-center rounded hover:bg-gray-200 dark:hover:bg-gray-600"
               title="새로고침"
             >
@@ -572,7 +594,7 @@ export default function ProjectTree({ project, projectIndex, searchQuery, onOpen
               탐색기에서 열기
             </button>
             <button
-              onClick={() => { loadNodes(); setContextMenu(null) }}
+              onClick={() => { loadNodes(); loadGitStatus(); setContextMenu(null) }}
               className="w-full flex items-center gap-2 px-3 py-1.5 text-xs hover:bg-gray-100 dark:hover:bg-gray-700 text-left"
             >
               <svg className="w-3.5 h-3.5 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">

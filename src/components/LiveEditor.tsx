@@ -109,32 +109,43 @@ export default function LiveEditor({ tab, onSave, onChange, editorViewRef }: Pro
   }, [])
 
   // ── Helper: toggle line prefix ────────────────────────────────────────
+  const listPrefixRegex = /^(\d+\.\s|- \[ \] |- |- |> |#{1,6}\s)/
   const toggleLinePrefix = useCallback((view: EditorView, prefix: string) => {
     const { from, to } = view.state.selection.main
     const startLine = view.state.doc.lineAt(from)
     const endLine = view.state.doc.lineAt(to)
     const changes: { from: number; to: number; insert: string }[] = []
+    const isNumbered = prefix === '1. '
     // Check if all lines already have the prefix
     let allHave = true
     for (let i = startLine.number; i <= endLine.number; i++) {
-      if (!view.state.doc.line(i).text.startsWith(prefix)) { allHave = false; break }
+      const text = view.state.doc.line(i).text
+      if (text.trim() === '') continue
+      if (isNumbered ? !text.match(/^\d+\.\s/) : !text.startsWith(prefix)) { allHave = false; break }
     }
+    let num = 1
     for (let i = startLine.number; i <= endLine.number; i++) {
       const line = view.state.doc.line(i)
+      if (line.text.trim() === '') continue
       if (allHave) {
-        // Remove prefix from all lines
-        changes.push({ from: line.from, to: line.from + prefix.length, insert: '' })
-      } else {
-        // Remove any existing heading prefix first, then add new one
-        const headingMatch = line.text.match(/^#{1,6}\s/)
-        if (headingMatch) {
-          changes.push({ from: line.from, to: line.from + headingMatch[0].length, insert: prefix })
+        if (isNumbered) {
+          const match = line.text.match(/^\d+\.\s/)
+          if (match) changes.push({ from: line.from, to: line.from + match[0].length, insert: '' })
         } else {
-          changes.push({ from: line.from, to: line.from, insert: prefix })
+          changes.push({ from: line.from, to: line.from + prefix.length, insert: '' })
         }
+      } else {
+        const actualPrefix = isNumbered ? `${num}. ` : prefix
+        const existingMatch = line.text.match(listPrefixRegex)
+        if (existingMatch) {
+          changes.push({ from: line.from, to: line.from + existingMatch[0].length, insert: actualPrefix })
+        } else {
+          changes.push({ from: line.from, to: line.from, insert: actualPrefix })
+        }
+        if (isNumbered) num++
       }
     }
-    view.dispatch({ changes })
+    if (changes.length > 0) view.dispatch({ changes })
     return true
   }, [])
 
@@ -154,9 +165,9 @@ export default function LiveEditor({ tab, onSave, onChange, editorViewRef }: Pro
       { key: 'Mod-Shift-s', run: (view) => wrapSelection(view, '~~', '~~') },
       { key: 'Mod-e', run: (view) => wrapSelection(view, '`', '`') },
       { key: 'Mod-k', run: (view) => wrapSelection(view, '[', '](url)') },
-      { key: 'Mod-1', run: (view) => toggleLinePrefix(view, '# ') },
-      { key: 'Mod-2', run: (view) => toggleLinePrefix(view, '## ') },
-      { key: 'Mod-3', run: (view) => toggleLinePrefix(view, '### ') },
+      { key: 'Ctrl-1', run: (view) => toggleLinePrefix(view, '# '), preventDefault: true },
+      { key: 'Ctrl-2', run: (view) => toggleLinePrefix(view, '## '), preventDefault: true },
+      { key: 'Ctrl-3', run: (view) => toggleLinePrefix(view, '### '), preventDefault: true },
     ])
   ), [onSave, wrapSelection, toggleLinePrefix])
 
@@ -309,7 +320,15 @@ export default function LiveEditor({ tab, onSave, onChange, editorViewRef }: Pro
   const handleCreateEditor = useCallback((view: EditorView) => {
     if (editorViewRef) editorViewRef.current = view
     attachDropListeners(view)
-  }, [editorViewRef, attachDropListeners])
+    // Ctrl+1/2/3 heading shortcuts via DOM (CodeMirror keymap may not catch number keys)
+    view.dom.addEventListener('keydown', (e) => {
+      if ((e.ctrlKey || e.metaKey) && !e.shiftKey && !e.altKey) {
+        if (e.key === '1') { e.preventDefault(); toggleLinePrefix(view, '# ') }
+        else if (e.key === '2') { e.preventDefault(); toggleLinePrefix(view, '## ') }
+        else if (e.key === '3') { e.preventDefault(); toggleLinePrefix(view, '### ') }
+      }
+    })
+  }, [editorViewRef, attachDropListeners, toggleLinePrefix])
 
 
   return (

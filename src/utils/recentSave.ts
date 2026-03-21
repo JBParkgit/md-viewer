@@ -2,7 +2,7 @@ const recentlySavedPaths = new Set<string>()
 
 export function markRecentlySaved(filePath: string) {
   recentlySavedPaths.add(filePath)
-  setTimeout(() => recentlySavedPaths.delete(filePath), 1500)
+  setTimeout(() => recentlySavedPaths.delete(filePath), 5000)
 }
 
 export function isRecentlySaved(filePath: string) {

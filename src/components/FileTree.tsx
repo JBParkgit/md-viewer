@@ -36,21 +36,42 @@ interface FileRowProps {
   projectPath?: string
 }
 
-function getGitDot(node: FileNode, gitStatusMap?: GitStatusMap, projectPath?: string): { color: string; title: string } | null {
-  if (!gitStatusMap || !projectPath) return null
-  // Compute relative path from project root
-  const sep = projectPath.includes('/') ? '/' : '\\'
-  const prefix = projectPath.endsWith(sep) ? projectPath : projectPath + sep
-  const rel = node.path.startsWith(prefix) ? node.path.slice(prefix.length).replace(/\\/g, '/') : null
+function getDirGitStatus(dirPath: string, gitStatusMap?: GitStatusMap, projectPath?: string): { modified: number; added: number; deleted: number } | null {
+  if (!gitStatusMap || !projectPath || Object.keys(gitStatusMap).length === 0) return null
+  const normProject = projectPath.replace(/\\/g, '/')
+  const normDir = dirPath.replace(/\\/g, '/')
+  const projectPrefix = normProject.endsWith('/') ? normProject : normProject + '/'
+  if (!normDir.startsWith(projectPrefix)) return null
+  const dirRel = normDir.slice(projectPrefix.length) + '/'
+  let modified = 0, added = 0, deleted = 0
+  for (const [file, entry] of Object.entries(gitStatusMap)) {
+    if (!file.startsWith(dirRel)) continue
+    const st = entry.worktree !== ' ' && entry.worktree !== '?' ? entry.worktree : entry.index
+    if (st === 'M') modified++
+    else if (st === 'D') deleted++
+    else added++ // A, ?, R, etc.
+  }
+  if (modified + added + deleted === 0) return null
+  return { modified, added, deleted }
+}
+
+function getGitDot(node: FileNode, gitStatusMap?: GitStatusMap, projectPath?: string): { color: string; letter: string; title: string } | null {
+  if (!gitStatusMap || !projectPath || Object.keys(gitStatusMap).length === 0) return null
+  // Normalize both paths to forward slashes for comparison
+  const normProject = projectPath.replace(/\\/g, '/')
+  const normNode = node.path.replace(/\\/g, '/')
+  const prefix = normProject.endsWith('/') ? normProject : normProject + '/'
+  if (!normNode.startsWith(prefix)) return null
+  const rel = normNode.slice(prefix.length)
   if (!rel) return null
   const entry = gitStatusMap[rel]
   if (!entry) return null
   const st = entry.worktree !== ' ' && entry.worktree !== '?' ? entry.worktree : entry.index
-  if (st === 'M') return { color: 'bg-orange-400', title: '수정됨' }
-  if (st === 'A' || entry.index === '?' || entry.worktree === '?') return { color: 'bg-green-400', title: '새 파일' }
-  if (st === 'D') return { color: 'bg-red-400', title: '삭제됨' }
-  if (st === 'R') return { color: 'bg-blue-400', title: '이름변경' }
-  return { color: 'bg-gray-400', title: st }
+  if (st === 'M') return { color: 'text-orange-500', letter: 'M', title: '수정됨' }
+  if (st === 'A' || entry.index === '?' || entry.worktree === '?') return { color: 'text-green-500', letter: entry.index === '?' ? 'U' : 'A', title: entry.index === '?' ? '추적 안됨' : '추가됨' }
+  if (st === 'D') return { color: 'text-red-500', letter: 'D', title: '삭제됨' }
+  if (st === 'R') return { color: 'text-blue-500', letter: 'R', title: '이름변경' }
+  return { color: 'text-gray-500', letter: st, title: st }
 }
 
 function FileRow({ node, onOpenFile, onOpenFilePinned, searchQuery, depth, projectId, openDirs, toggleDir, gitStatusMap, projectPath }: FileRowProps) {
@@ -222,6 +243,16 @@ function FileRow({ node, onOpenFile, onOpenFilePinned, searchQuery, depth, proje
               <Highlighted text={compactName} query={searchQuery} />
             </span>
           )}
+          {(() => {
+            const dirStatus = getDirGitStatus(displayNode.path, gitStatusMap, projectPath)
+            if (!dirStatus) return null
+            const { modified, added, deleted } = dirStatus
+            const total = modified + added + deleted
+            const color = modified > 0 ? 'text-orange-500' : deleted > 0 ? 'text-red-500' : 'text-green-500'
+            return (
+              <span className={`text-[9px] font-bold flex-shrink-0 ${color}`} title={`변경 ${total}개 (수정 ${modified}, 추가 ${added}, 삭제 ${deleted})`}>{total}</span>
+            )
+          })()}
         </div>
         {open && effectiveChildren && effectiveChildren.length > 0 && (
           <div>
@@ -247,18 +278,13 @@ function FileRow({ node, onOpenFile, onOpenFilePinned, searchQuery, depth, proje
   }
 
   // ── File ───────────────────────────────────────────────────────────────
-  // 싱글클릭 = preview 탭 / 더블클릭 = 고정 탭 (md·이미지)
-  // 그 외 파일 = 더블클릭 → OS 기본 앱
+  // 싱글클릭 = preview 탭 / 더블클릭 = 고정 탭
   const handleClick = () => {
-    if (isInApp) onOpenFile(node.path, node.name)
+    onOpenFile(node.path, node.name)
   }
 
   const handleDoubleClick = () => {
-    if (isInApp) {
-      onOpenFilePinned(node.path, node.name)
-    } else {
-      window.electronAPI.openPath(node.path)
-    }
+    onOpenFilePinned(node.path, node.name)
   }
 
   return (
@@ -269,17 +295,13 @@ function FileRow({ node, onOpenFile, onOpenFilePinned, searchQuery, depth, proje
         onClick={handleClick}
         onDoubleClick={handleDoubleClick}
         onContextMenu={(e) => { e.preventDefault(); setContextMenu({ x: e.clientX, y: e.clientY }) }}
-        className={`flex items-center gap-1.5 py-1 rounded text-xs group ${
-          isInApp ? 'cursor-pointer' : 'cursor-default'
-        } ${
+        className={`flex items-center gap-1.5 py-1 rounded text-xs group cursor-pointer ${
           isActiveFile
             ? 'bg-blue-100 dark:bg-blue-900/50 text-blue-700 dark:text-blue-300'
-            : isInApp
-              ? 'hover:bg-gray-100 dark:hover:bg-gray-700 text-gray-600 dark:text-gray-400'
-              : 'hover:bg-gray-50 dark:hover:bg-gray-700/50 text-gray-500 dark:text-gray-500'
+            : 'hover:bg-gray-100 dark:hover:bg-gray-700 text-gray-600 dark:text-gray-400'
         }`}
         style={{ paddingLeft: `${8 + depth * 14}px`, paddingRight: '8px' }}
-        title={isInApp ? node.path : `더블클릭으로 열기: ${node.path}`}
+        title={node.path}
       >
         <FileTypeIcon name={node.name} />
         {isRenaming ? (
@@ -314,7 +336,7 @@ function FileRow({ node, onOpenFile, onOpenFilePinned, searchQuery, depth, proje
         {(() => {
           const dot = getGitDot(node, gitStatusMap, projectPath)
           if (!dot) return null
-          return <span className={`w-2 h-2 rounded-full flex-shrink-0 ${dot.color}`} title={dot.title} />
+          return <span className={`text-[10px] font-bold flex-shrink-0 ${dot.color}`} title={dot.title}>{dot.letter}</span>
         })()}
       </div>
 
@@ -419,9 +441,10 @@ function FileRow({ node, onOpenFile, onOpenFilePinned, searchQuery, depth, proje
             {(() => {
               const dot = getGitDot(node, gitStatusMap, projectPath)
               if (!dot || !projectPath) return null
-              const sep = projectPath.includes('/') ? '/' : '\\'
-              const prefix = projectPath.endsWith(sep) ? projectPath : projectPath + sep
-              const rel = node.path.startsWith(prefix) ? node.path.slice(prefix.length).replace(/\\/g, '/') : null
+              const normProject = projectPath.replace(/\\/g, '/')
+              const normNode = node.path.replace(/\\/g, '/')
+              const pfx = normProject.endsWith('/') ? normProject : normProject + '/'
+              const rel = normNode.startsWith(pfx) ? normNode.slice(pfx.length) : null
               if (!rel) return null
               const entry = gitStatusMap?.[rel]
               if (!entry) return null

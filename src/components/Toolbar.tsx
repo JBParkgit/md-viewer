@@ -21,7 +21,7 @@ export default function Toolbar() {
         className="text-sm font-semibold text-blue-600 dark:text-blue-400 mr-2 select-none"
         style={{ WebkitAppRegion: 'no-drag' } as React.CSSProperties}
       >
-        Docuflow
+        Docuflow for Hospital RUN v1.0
       </span>
 
       <button

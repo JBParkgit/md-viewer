@@ -53,17 +53,58 @@ export default function MarkdownEditor({ tab }: Props) {
     }
   }, [tab.filePath, tab.id, tab.content, markTabSaved])
 
-  // ── Ctrl+S ────────────────────────────────────────────────────────────────
+  // ── Insert heading helper (for shortcuts) ────────────────────────────────
+  const insertHeading = useCallback((prefix: string) => {
+    const view = editorViewRef.current
+    if (!view) return
+    const { from } = view.state.selection.main
+    const line = view.state.doc.lineAt(from)
+    const lineText = line.text
+    if (lineText.startsWith(prefix)) {
+      view.dispatch({
+        changes: { from: line.from, to: line.from + prefix.length, insert: '' },
+        selection: { anchor: line.from },
+      })
+    } else {
+      const headingMatch = lineText.match(/^#{1,6}\s/)
+      if (headingMatch) {
+        view.dispatch({
+          changes: { from: line.from, to: line.from + headingMatch[0].length, insert: prefix },
+          selection: { anchor: line.from + prefix.length },
+        })
+      } else {
+        view.dispatch({
+          changes: { from: line.from, insert: prefix },
+          selection: { anchor: line.from + prefix.length },
+        })
+      }
+    }
+    view.focus()
+  }, [])
+
+  // ── Ctrl+S / Ctrl+1,2,3 ──────────────────────────────────────────────────
   useEffect(() => {
     const handler = (e: KeyboardEvent) => {
       if ((e.ctrlKey || e.metaKey) && e.key === 's') {
         e.preventDefault()
         handleSave()
       }
+      if ((e.ctrlKey || e.metaKey) && e.key === '1') {
+        e.preventDefault()
+        insertHeading('# ')
+      }
+      if ((e.ctrlKey || e.metaKey) && e.key === '2') {
+        e.preventDefault()
+        insertHeading('## ')
+      }
+      if ((e.ctrlKey || e.metaKey) && e.key === '3') {
+        e.preventDefault()
+        insertHeading('### ')
+      }
     }
     window.addEventListener('keydown', handler)
     return () => window.removeEventListener('keydown', handler)
-  }, [handleSave])
+  }, [handleSave, insertHeading])
 
   // ── Reload from disk ──────────────────────────────────────────────────────
   const handleReload = async () => {
@@ -125,19 +166,18 @@ export default function MarkdownEditor({ tab }: Props) {
           ))}
         </div>
 
-        {/* Save button (when in edit modes) */}
-        {layout !== 'preview' && (
-          <button
-            onClick={() => handleSave()}
-            className="flex items-center gap-1 px-3 py-1 text-xs rounded-md bg-blue-600 hover:bg-blue-700 text-white transition-colors"
-            title="저장 (Ctrl+S)"
-          >
-            <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 7H5a2 2 0 00-2 2v9a2 2 0 002 2h14a2 2 0 002-2V9a2 2 0 00-2-2h-3m-1 4l-3 3m0 0l-3-3m3 3V4" />
-            </svg>
-            저장
-          </button>
-        )}
+        {/* Save button */}
+        <button
+          onClick={() => handleSave()}
+          disabled={!tab.isDirty}
+          className="flex items-center gap-1 px-3 py-1 text-xs rounded-md bg-blue-600 hover:bg-blue-700 disabled:opacity-40 text-white transition-colors"
+          title="저장 (Ctrl+S)"
+        >
+          <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 7H5a2 2 0 00-2 2v9a2 2 0 002 2h14a2 2 0 002-2V9a2 2 0 00-2-2h-3m-1 4l-3 3m0 0l-3-3m3 3V4" />
+          </svg>
+          저장
+        </button>
       </div>
 
       {/* Tag bar */}
@@ -418,21 +458,67 @@ function MdToolbar({ editorViewRef, onTableClick }: MdToolbarProps) {
   const wrapLine = (prefix: string) => {
     const view = editorViewRef.current
     if (!view) return
-    const { from } = view.state.selection.main
-    const line = view.state.doc.lineAt(from)
-    const lineText = line.text
-    if (lineText.startsWith(prefix)) {
-      // Same prefix: toggle off
-      view.dispatch({ changes: { from: line.from, to: line.from + prefix.length, insert: '' } })
-    } else {
-      // Replace existing heading prefix if any, otherwise just prepend
-      const headingMatch = lineText.match(/^#{1,6}\s/)
-      if (headingMatch) {
-        view.dispatch({ changes: { from: line.from, to: line.from + headingMatch[0].length, insert: prefix } })
+    const { from, to } = view.state.selection.main
+    const startLine = view.state.doc.lineAt(from)
+    const endLine = view.state.doc.lineAt(to)
+    const changes: { from: number; to: number; insert: string }[] = []
+    // Check if all lines already have the prefix
+    const listPrefixRegex = /^(\d+\.\s|- \[ \] |- |- |> |#{1,6}\s)/
+    let allHave = true
+    for (let i = startLine.number; i <= endLine.number; i++) {
+      if (!view.state.doc.line(i).text.startsWith(prefix)) { allHave = false; break }
+    }
+    for (let i = startLine.number; i <= endLine.number; i++) {
+      const line = view.state.doc.line(i)
+      if (line.text.trim() === '') continue // skip empty lines
+      if (allHave) {
+        changes.push({ from: line.from, to: line.from + prefix.length, insert: '' })
       } else {
-        view.dispatch({ changes: { from: line.from, insert: prefix } })
+        // Remove any existing list/heading prefix first
+        const existingMatch = line.text.match(listPrefixRegex)
+        if (existingMatch) {
+          changes.push({ from: line.from, to: line.from + existingMatch[0].length, insert: prefix })
+        } else {
+          changes.push({ from: line.from, to: line.from, insert: prefix })
+        }
       }
     }
+    if (changes.length > 0) view.dispatch({ changes })
+    view.focus()
+  }
+
+  const wrapLineNumbered = () => {
+    const view = editorViewRef.current
+    if (!view) return
+    const { from, to } = view.state.selection.main
+    const startLine = view.state.doc.lineAt(from)
+    const endLine = view.state.doc.lineAt(to)
+    const changes: { from: number; to: number; insert: string }[] = []
+    const listPrefixRegex = /^(\d+\.\s|- \[ \] |- |- |> |#{1,6}\s)/
+    // Check if all lines already have numbered prefix
+    let allHave = true
+    for (let i = startLine.number; i <= endLine.number; i++) {
+      if (!view.state.doc.line(i).text.match(/^\d+\.\s/)) { allHave = false; break }
+    }
+    let num = 1
+    for (let i = startLine.number; i <= endLine.number; i++) {
+      const line = view.state.doc.line(i)
+      if (line.text.trim() === '') continue
+      if (allHave) {
+        const match = line.text.match(/^\d+\.\s/)
+        if (match) changes.push({ from: line.from, to: line.from + match[0].length, insert: '' })
+      } else {
+        const prefix = `${num}. `
+        const existingMatch = line.text.match(listPrefixRegex)
+        if (existingMatch) {
+          changes.push({ from: line.from, to: line.from + existingMatch[0].length, insert: prefix })
+        } else {
+          changes.push({ from: line.from, to: line.from, insert: prefix })
+        }
+        num++
+      }
+    }
+    if (changes.length > 0) view.dispatch({ changes })
     view.focus()
   }
 
@@ -480,7 +566,7 @@ function MdToolbar({ editorViewRef, onTableClick }: MdToolbarProps) {
         </svg>
       </button>
       {/* Ordered list */}
-      <button onClick={() => wrapLine('1. ')} className={btnCls} title="번호 목록">
+      <button onClick={() => wrapLineNumbered()} className={btnCls} title="번호 목록">
         <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
           <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 6h16M4 12h16M4 18h8" />
         </svg>
@@ -529,6 +615,105 @@ function MdToolbar({ editorViewRef, onTableClick }: MdToolbarProps) {
       <button onClick={() => insert('\n---\n')} className={btnCls} title="구분선">
         <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
           <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 12h16" />
+        </svg>
+      </button>
+      <div className={sepCls} />
+
+      {/* Highlight */}
+      <button onClick={() => wrap('==', '==')} className={btnCls} title="형광펜">
+        <svg className="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor">
+          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z" />
+          <path strokeLinecap="round" strokeWidth={3} d="M3 21h18" className="text-yellow-400" stroke="currentColor" />
+        </svg>
+      </button>
+
+      {/* Image from file */}
+      <button
+        onClick={async () => {
+          const view = editorViewRef.current
+          if (!view) return
+          // Find project root
+          const filePath = useAppStore.getState().tabs.find(t => t.id === useAppStore.getState().activeTabId)?.filePath
+          if (!filePath) return
+          const projects = useAppStore.getState().projects
+          let projectRoot = ''
+          for (const p of projects) {
+            if (filePath.startsWith(p.path)) { projectRoot = p.path; break }
+          }
+          if (!projectRoot) return
+          const result = await window.electronAPI.openFolder()
+          // Use a file dialog instead - but we don't have one for files, so use the existing image copy flow
+          // For now, insert a placeholder and let user fill in
+          const pos = view.state.selection.main.head
+          view.dispatch({ changes: { from: pos, insert: '![설명](images/)' }, selection: { anchor: pos + 10 } })
+          view.focus()
+        }}
+        className={btnCls}
+        title="이미지 삽입 (경로 입력)"
+      >
+        <svg className="w-3.5 h-3.5 text-green-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
+          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14" />
+        </svg>
+      </button>
+      <div className={sepCls} />
+
+      {/* Details/Collapse */}
+      <button onClick={() => insert('\n<details>\n<summary>제목</summary>\n\n내용\n\n</details>\n')} className={btnCls} title="접기/펼치기">
+        <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+        </svg>
+      </button>
+
+      {/* Footnote */}
+      <button onClick={() => insert('[^1]\n\n[^1]: 각주 내용')} className={btnCls} title="각주">
+        <span className="text-[9px] font-bold">1)</span>
+      </button>
+
+      {/* Help */}
+      <button
+        onClick={() => {
+          const help = `# 마크다운 단축키 & 문법 가이드
+
+## 단축키
+| 키 | 기능 |
+|---|---|
+| Ctrl+1 | 제목 1 (H1) |
+| Ctrl+2 | 제목 2 (H2) |
+| Ctrl+3 | 제목 3 (H3) |
+| Ctrl+B | **굵게** |
+| Ctrl+I | *기울임* |
+| Ctrl+S | 저장 |
+
+## 문법
+| 입력 | 결과 |
+|---|---|
+| # 제목 | 큰 제목 |
+| ## 제목 | 중간 제목 |
+| **굵게** | **굵게** |
+| *기울임* | *기울임* |
+| ~~취소~~ | ~~취소선~~ |
+| - 항목 | 글머리 기호 목록 |
+| 1. 항목 | 번호 목록 |
+| - [ ] 할일 | 체크리스트 |
+| > 인용 | 인용문 |
+| [텍스트](url) | 링크 |
+| ![설명](url) | 이미지 |
+| \`코드\` | 인라인 코드 |
+| --- | 구분선 |
+`
+          const view = editorViewRef.current
+          if (view) {
+            const pos = view.state.selection.main.head
+            view.dispatch({ changes: { from: pos, insert: help } })
+            view.focus()
+          }
+        }}
+        className={btnCls}
+        title="마크다운 도움말 삽입"
+      >
+        <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8.228 9c.549-1.165 2.03-2 3.772-2 2.21 0 4 1.343 4 3 0 1.4-1.278 2.575-3.006 2.907-.542.104-.994.54-.994 1.093m0 3h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
         </svg>
       </button>
     </div>

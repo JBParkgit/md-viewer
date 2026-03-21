@@ -69,6 +69,20 @@ function createWindow() {
     mainWindow.loadFile(join(__dirname, '../dist/index.html'))
   }
 
+  let forceClose = false
+  mainWindow.on('close', (e) => {
+    if (forceClose) return
+    e.preventDefault()
+    mainWindow?.webContents.send('app:beforeClose')
+  })
+
+  ipcMain.handle('app:canClose', (_e, canClose: boolean) => {
+    if (canClose) {
+      forceClose = true
+      mainWindow?.close()
+    }
+  })
+
   mainWindow.on('closed', () => {
     mainWindow = null
     // Stop all watchers
@@ -549,7 +563,7 @@ ipcMain.handle('dialog:saveFolder', async () => {
 // ── IPC: Git Operations ─────────────────────────────────────────────────────
 function gitExec(args: string[], cwd: string): Promise<{ success: boolean; output?: string; error?: string }> {
   return new Promise((resolve) => {
-    execFile('git', args, { cwd, timeout: 30000 }, (err, stdout, stderr) => {
+    execFile('git', args, { cwd, timeout: 30000, shell: true }, (err, stdout, stderr) => {
       if (err) {
         resolve({ success: false, error: stderr.trim() || err.message })
       } else {
@@ -563,12 +577,16 @@ ipcMain.handle('git:isRepo', async (_e, cwd: string) => {
   return existsSync(join(cwd, '.git'))
 })
 
+ipcMain.handle('git:clone', async (_e, url: string, destDir: string) => {
+  return gitExec(['clone', url, destDir], destDir.replace(/[/\\][^/\\]*$/, ''))
+})
+
 ipcMain.handle('git:init', async (_e, cwd: string) => {
   return gitExec(['init'], cwd)
 })
 
 ipcMain.handle('git:status', async (_e, cwd: string) => {
-  return gitExec(['status', '--porcelain', '-uall'], cwd)
+  return gitExec(['-c', 'core.quotePath=false', 'status', '--porcelain', '-uall'], cwd)
 })
 
 ipcMain.handle('git:branch', async (_e, cwd: string) => {
@@ -580,7 +598,12 @@ ipcMain.handle('git:stage', async (_e, cwd: string, file: string) => {
 })
 
 ipcMain.handle('git:unstage', async (_e, cwd: string, file: string) => {
-  return gitExec(['restore', '--staged', '--', file], cwd)
+  // Try restore --staged first; if it fails (e.g. no commits yet), fallback to rm --cached
+  const result = await gitExec(['restore', '--staged', '--', file], cwd)
+  if (!result.success) {
+    return gitExec(['rm', '--cached', '--', file], cwd)
+  }
+  return result
 })
 
 ipcMain.handle('git:stageAll', async (_e, cwd: string) => {
@@ -596,7 +619,7 @@ ipcMain.handle('git:commit', async (_e, cwd: string, message: string) => {
 })
 
 ipcMain.handle('git:log', async (_e, cwd: string) => {
-  return gitExec(['log', '--oneline', '-10', '--format=%h %s (%cr)'], cwd)
+  return gitExec(['log', '--oneline', '-10'], cwd)
 })
 
 ipcMain.handle('git:pull', async (_e, cwd: string) => {
@@ -604,7 +627,20 @@ ipcMain.handle('git:pull', async (_e, cwd: string) => {
 })
 
 ipcMain.handle('git:push', async (_e, cwd: string) => {
-  return gitExec(['push'], cwd)
+  // Check if there are any commits
+  const logCheck = await gitExec(['rev-parse', 'HEAD'], cwd)
+  if (!logCheck.success) {
+    return { success: false, error: '커밋이 없습니다. 먼저 커밋을 생성하세요.' }
+  }
+  // Get current branch
+  const branchRes = await gitExec(['branch', '--show-current'], cwd)
+  const branch = branchRes.output?.trim() || 'master'
+  // Always push with -u to handle first push automatically
+  return gitExec(['push', '-u', 'origin', branch], cwd)
+})
+
+ipcMain.handle('git:revert', async (_e, cwd: string, hash: string) => {
+  return gitExec(['revert', '--no-edit', hash], cwd)
 })
 
 ipcMain.handle('git:remoteAdd', async (_e, cwd: string, url: string) => {
@@ -613,4 +649,24 @@ ipcMain.handle('git:remoteAdd', async (_e, cwd: string, url: string) => {
 
 ipcMain.handle('git:remoteGet', async (_e, cwd: string) => {
   return gitExec(['remote', 'get-url', 'origin'], cwd)
+})
+
+ipcMain.handle('git:config', async (_e, cwd: string) => {
+  const [userName, userEmail, remoteFetch, remotePush, defaultBranch] = await Promise.all([
+    gitExec(['config', 'user.name'], cwd),
+    gitExec(['config', 'user.email'], cwd),
+    gitExec(['remote', 'get-url', 'origin'], cwd),
+    gitExec(['remote', 'get-url', '--push', 'origin'], cwd),
+    gitExec(['config', 'init.defaultBranch'], cwd),
+  ])
+  return {
+    success: true,
+    output: JSON.stringify({
+      userName: userName.output || '',
+      userEmail: userEmail.output || '',
+      remoteFetch: remoteFetch.output || '',
+      remotePush: remotePush.output || '',
+      defaultBranch: defaultBranch.output || '',
+    }),
+  }
 })

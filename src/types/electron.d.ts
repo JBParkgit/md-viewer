@@ -43,6 +43,7 @@ export interface ElectronAPI {
   copyImageToClipboard: (filePath: string) => Promise<{ success: boolean; error?: string }>
   // Git
   gitIsRepo: (cwd: string) => Promise<boolean>
+  gitClone: (url: string, destDir: string) => Promise<{ success: boolean; output?: string; error?: string }>
   gitInit: (cwd: string) => Promise<{ success: boolean; output?: string; error?: string }>
   gitStatus: (cwd: string) => Promise<{ success: boolean; output?: string; error?: string }>
   gitBranch: (cwd: string) => Promise<{ success: boolean; output?: string; error?: string }>
@@ -54,8 +55,13 @@ export interface ElectronAPI {
   gitLog: (cwd: string) => Promise<{ success: boolean; output?: string; error?: string }>
   gitPull: (cwd: string) => Promise<{ success: boolean; output?: string; error?: string }>
   gitPush: (cwd: string) => Promise<{ success: boolean; output?: string; error?: string }>
+  gitRevert: (cwd: string, hash: string) => Promise<{ success: boolean; output?: string; error?: string }>
   gitRemoteAdd: (cwd: string, url: string) => Promise<{ success: boolean; output?: string; error?: string }>
   gitRemoteGet: (cwd: string) => Promise<{ success: boolean; output?: string; error?: string }>
+  gitConfig: (cwd: string) => Promise<{ success: boolean; output?: string; error?: string }>
+
+  onBeforeClose: (cb: () => void) => () => void
+  confirmClose: (canClose: boolean) => Promise<void>
 
   storeGet: (key: string) => Promise<unknown>
   storeSet: (key: string, value: unknown) => Promise<void>

@@ -81,16 +81,32 @@ export default function GitPanel() {
   const [remoteUrl, setRemoteUrl] = useState('')
   const [showRemoteInput, setShowRemoteInput] = useState(false)
   const [remoteInputValue, setRemoteInputValue] = useState('')
+  const [showCloneInput, setShowCloneInput] = useState(false)
+  const [cloneUrl, setCloneUrl] = useState('')
+  const [cloning, setCloning] = useState(false)
+  const [showConfig, setShowConfig] = useState(false)
+  const [gitConfigData, setGitConfigData] = useState<{
+    userName: string; userEmail: string; remoteFetch: string; remotePush: string; defaultBranch: string
+  } | null>(null)
 
-  // Auto-select first project
+  // Auto-select first project (only if none selected or current selection is invalid)
   useEffect(() => {
-    if (projects.length > 0 && !selectedProjectPath) {
-      setSelectedProjectPath(projects[0].path)
-    }
     if (projects.length === 0) {
       setSelectedProjectPath(null)
+    } else if (!selectedProjectPath || !projects.some(p => p.path === selectedProjectPath)) {
+      setSelectedProjectPath(projects[0].path)
     }
-  }, [projects, selectedProjectPath])
+  }, [projects])
+
+  // Pick up project selection from branch badge click
+  const gitSelectedProject = useAppStore(s => s.gitSelectedProject)
+  const setGitSelectedProject = useAppStore(s => s.setGitSelectedProject)
+  useEffect(() => {
+    if (gitSelectedProject) {
+      setSelectedProjectPath(gitSelectedProject)
+      setGitSelectedProject(null)
+    }
+  }, [gitSelectedProject, setGitSelectedProject])
 
   const refresh = useCallback(async () => {
     if (!selectedProjectPath) return
@@ -130,14 +146,43 @@ export default function GitPanel() {
     setTimeout(() => setActionMsg(null), 3000)
   }
 
+  const notifyGitChanged = () => {
+    if (selectedProjectPath) {
+      window.dispatchEvent(new CustomEvent('git-status-changed', { detail: selectedProjectPath }))
+    }
+  }
+
   const handleInit = async () => {
     if (!selectedProjectPath) return
     const res = await window.electronAPI.gitInit(selectedProjectPath)
     if (res.success) {
       showAction('Git 저장소가 초기화되었습니다.', 'success')
       refresh()
+      notifyGitChanged()
     } else {
       showAction(res.error || '초기화 실패', 'error')
+    }
+  }
+
+  const handleClone = async () => {
+    if (!cloneUrl.trim()) return
+    const destParent = await window.electronAPI.saveFolder()
+    if (!destParent) return
+    // Extract repo name from URL
+    const repoName = cloneUrl.trim().replace(/\.git$/, '').split('/').pop() || 'repo'
+    const sep = destParent.includes('/') ? '/' : '\\'
+    const destDir = destParent + sep + repoName
+    setCloning(true)
+    const res = await window.electronAPI.gitClone(cloneUrl.trim(), destDir)
+    setCloning(false)
+    if (res.success) {
+      showAction('Clone 완료!', 'success')
+      useAppStore.getState().addProject(destDir)
+      setShowCloneInput(false)
+      setCloneUrl('')
+      setSelectedProjectPath(destDir)
+    } else {
+      showAction(res.error || 'Clone 실패', 'error')
     }
   }
 
@@ -145,18 +190,21 @@ export default function GitPanel() {
     if (!selectedProjectPath) return
     await window.electronAPI.gitStage(selectedProjectPath, file)
     refresh()
+    notifyGitChanged()
   }
 
   const handleUnstage = async (file: string) => {
     if (!selectedProjectPath) return
     await window.electronAPI.gitUnstage(selectedProjectPath, file)
     refresh()
+    notifyGitChanged()
   }
 
   const handleStageAll = async () => {
     if (!selectedProjectPath) return
     await window.electronAPI.gitStageAll(selectedProjectPath)
     refresh()
+    notifyGitChanged()
   }
 
   const handleDiscard = async (file: string) => {
@@ -164,6 +212,7 @@ export default function GitPanel() {
     if (!window.confirm(`"${file}" 파일의 변경사항을 취소하시겠습니까?`)) return
     await window.electronAPI.gitDiscard(selectedProjectPath, file)
     refresh()
+    notifyGitChanged()
   }
 
   const handleCommit = async () => {
@@ -173,6 +222,7 @@ export default function GitPanel() {
       showAction('커밋 완료!', 'success')
       setCommitMsg('')
       refresh()
+      notifyGitChanged()
     } else {
       showAction(res.error || '커밋 실패', 'error')
     }
@@ -185,6 +235,7 @@ export default function GitPanel() {
     if (res.success) {
       showAction('Pull 완료!', 'success')
       refresh()
+      notifyGitChanged()
     } else {
       showAction(res.error || 'Pull 실패', 'error')
       setLoading(false)
@@ -198,6 +249,7 @@ export default function GitPanel() {
     if (res.success) {
       showAction('Push 완료!', 'success')
       refresh()
+      notifyGitChanged()
     } else {
       showAction(res.error || 'Push 실패', 'error')
       setLoading(false)
@@ -220,13 +272,59 @@ export default function GitPanel() {
   const stagedFiles = files.filter(f => f.staged)
   const unstagedFiles = files.filter(f => !f.staged)
 
+  const cloneInputUI = showCloneInput && (
+    <div className="px-3 py-2 border-b border-gray-200 dark:border-gray-700">
+      <div className="text-xs text-gray-500 dark:text-gray-400 font-medium mb-1.5">원격 저장소 Clone</div>
+      <input
+        value={cloneUrl}
+        onChange={e => setCloneUrl(e.target.value)}
+        onKeyDown={e => { if (e.key === 'Enter') handleClone(); if (e.key === 'Escape') { setShowCloneInput(false); setCloneUrl('') } }}
+        placeholder="https://github.com/user/repo.git"
+        className="w-full px-2 py-1.5 rounded border border-gray-200 dark:border-gray-600 bg-white dark:bg-gray-700 text-xs focus:outline-none focus:ring-1 focus:ring-blue-400 mb-1.5"
+        autoFocus
+      />
+      <div className="flex gap-1.5">
+        <button
+          onClick={handleClone}
+          disabled={!cloneUrl.trim() || cloning}
+          className="flex-1 flex items-center justify-center gap-1 px-2 py-1.5 rounded bg-blue-600 hover:bg-blue-700 disabled:opacity-40 text-white text-xs transition-colors"
+        >
+          {cloning ? (
+            <>
+              <div className="w-3 h-3 border-2 border-white border-t-transparent rounded-full animate-spin" />
+              Clone 중...
+            </>
+          ) : (
+            'Clone'
+          )}
+        </button>
+        <button
+          onClick={() => { setShowCloneInput(false); setCloneUrl('') }}
+          className="px-2 py-1.5 rounded text-xs text-gray-500 hover:bg-gray-200 dark:hover:bg-gray-600"
+        >
+          취소
+        </button>
+      </div>
+    </div>
+  )
+
   if (projects.length === 0) {
     return (
-      <div className="flex flex-col items-center justify-center h-32 gap-2 text-gray-400 text-xs">
-        <svg className="w-8 h-8" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+      <div className="flex flex-col items-center justify-center gap-3 py-8 px-4 text-xs">
+        <svg className="w-10 h-10 text-gray-300 dark:text-gray-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
           <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M3 7a2 2 0 012-2h4l2 2h8a2 2 0 012 2v9a2 2 0 01-2 2H5a2 2 0 01-2-2V7z" />
         </svg>
-        <span>프로젝트를 먼저 추가하세요</span>
+        <span className="text-gray-400">프로젝트를 먼저 추가하세요</span>
+        <button
+          onClick={() => setShowCloneInput(true)}
+          className="flex items-center gap-1.5 px-3 py-1.5 rounded-md bg-green-600 hover:bg-green-700 text-white transition-colors"
+        >
+          <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" />
+          </svg>
+          저장소 Clone
+        </button>
+        {cloneInputUI}
       </div>
     )
   }
@@ -255,8 +353,11 @@ export default function GitPanel() {
         </div>
       )}
 
+      {/* Clone input (shared) */}
+      {cloneInputUI}
+
       {/* Not a repo */}
-      {!isRepo && selectedProjectPath && (
+      {!isRepo && selectedProjectPath && !showCloneInput && (
         <div className="flex flex-col items-center justify-center gap-3 py-8 px-4">
           <svg className="w-10 h-10 text-gray-300 dark:text-gray-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M13 10V3L4 14h7v7l9-11h-7z" />
@@ -267,6 +368,15 @@ export default function GitPanel() {
             className="flex items-center gap-1.5 px-3 py-1.5 text-xs rounded-md bg-blue-600 hover:bg-blue-700 text-white transition-colors"
           >
             Git 저장소 초기화
+          </button>
+          <button
+            onClick={() => setShowCloneInput(true)}
+            className="flex items-center gap-1.5 px-3 py-1.5 text-xs rounded-md bg-green-600 hover:bg-green-700 text-white transition-colors"
+          >
+            <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" />
+            </svg>
+            저장소 Clone
           </button>
         </div>
       )}
@@ -283,6 +393,11 @@ export default function GitPanel() {
               <span className="font-medium text-purple-600 dark:text-purple-400">{branch || '(no branch)'}</span>
               {loading && <div className="w-3 h-3 border border-gray-400 border-t-transparent rounded-full animate-spin" />}
               <div className="flex-1" />
+              <button onClick={() => setShowCloneInput(v => !v)} className="p-1 rounded hover:bg-gray-200 dark:hover:bg-gray-600" title="저장소 Clone">
+                <svg className="w-3.5 h-3.5 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" />
+                </svg>
+              </button>
               <button onClick={refresh} className="p-1 rounded hover:bg-gray-200 dark:hover:bg-gray-600" title="새로고침">
                 <svg className="w-3.5 h-3.5 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
@@ -449,18 +564,96 @@ export default function GitPanel() {
           </div>
 
           {/* Recent log */}
-          <div className="px-3 py-2">
+          <div className="px-3 py-2 border-b border-gray-200 dark:border-gray-700">
             <div className="text-gray-500 dark:text-gray-400 font-medium mb-1.5">최근 이력</div>
             {logs.length === 0 ? (
               <div className="text-gray-400 py-2">커밋 이력이 없습니다</div>
             ) : (
               <div className="space-y-1">
                 {logs.map((log, i) => (
-                  <div key={i} className="flex items-start gap-1.5 py-0.5">
+                  <div key={i} className="group flex items-start gap-1.5 py-0.5">
                     <span className="font-mono text-[10px] text-blue-500 flex-shrink-0 mt-0.5">{log.hash}</span>
-                    <span className="text-gray-600 dark:text-gray-400 leading-tight">{log.message}</span>
+                    <span className="flex-1 text-gray-600 dark:text-gray-400 leading-tight">{log.message}</span>
+                    <button
+                      onClick={async () => {
+                        if (!selectedProjectPath) return
+                        if (!window.confirm(`"${log.hash}" 커밋을 되돌리시겠습니까?\n(되돌리는 새 커밋이 생성됩니다)`)) return
+                        const res = await window.electronAPI.gitRevert(selectedProjectPath, log.hash)
+                        if (res.success) {
+                          showAction('커밋이 되돌려졌습니다.', 'success')
+                          refresh()
+                        } else {
+                          showAction(res.error || 'Revert 실패', 'error')
+                        }
+                      }}
+                      className="opacity-0 group-hover:opacity-100 p-0.5 rounded hover:bg-gray-200 dark:hover:bg-gray-600 flex-shrink-0 mt-0.5"
+                      title="이 커밋 되돌리기"
+                    >
+                      <svg className="w-3 h-3 text-red-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 10h10a8 8 0 018 8v2M3 10l6 6m-6-6l6-6" />
+                      </svg>
+                    </button>
                   </div>
                 ))}
+              </div>
+            )}
+          </div>
+
+          {/* Git config */}
+          <div className="px-3 py-2">
+            <button
+              onClick={async () => {
+                if (!showConfig && selectedProjectPath) {
+                  const res = await window.electronAPI.gitConfig(selectedProjectPath)
+                  if (res.success && res.output) {
+                    setGitConfigData(JSON.parse(res.output))
+                  }
+                }
+                setShowConfig(v => !v)
+              }}
+              className="flex items-center gap-1.5 text-gray-500 dark:text-gray-400 font-medium hover:text-gray-700 dark:hover:text-gray-300"
+            >
+              <svg className={`w-3 h-3 transition-transform ${showConfig ? 'rotate-90' : ''}`} fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
+              </svg>
+              저장소 설정
+            </button>
+            {showConfig && gitConfigData && (
+              <div className="mt-2 space-y-1.5 text-[11px]">
+                <div className="flex gap-2">
+                  <span className="text-gray-400 w-16 flex-shrink-0">사용자</span>
+                  <span className="text-gray-700 dark:text-gray-300 truncate">
+                    {gitConfigData.userName || <span className="text-gray-400 italic">미설정</span>}
+                  </span>
+                </div>
+                <div className="flex gap-2">
+                  <span className="text-gray-400 w-16 flex-shrink-0">이메일</span>
+                  <span className="text-gray-700 dark:text-gray-300 truncate">
+                    {gitConfigData.userEmail || <span className="text-gray-400 italic">미설정</span>}
+                  </span>
+                </div>
+                <div className="flex gap-2">
+                  <span className="text-gray-400 w-16 flex-shrink-0">원격 (fetch)</span>
+                  <span className="text-gray-700 dark:text-gray-300 truncate font-mono text-[10px]">
+                    {gitConfigData.remoteFetch || <span className="text-gray-400 italic">미설정</span>}
+                  </span>
+                </div>
+                <div className="flex gap-2">
+                  <span className="text-gray-400 w-16 flex-shrink-0">원격 (push)</span>
+                  <span className="text-gray-700 dark:text-gray-300 truncate font-mono text-[10px]">
+                    {gitConfigData.remotePush || <span className="text-gray-400 italic">미설정</span>}
+                  </span>
+                </div>
+                <div className="flex gap-2">
+                  <span className="text-gray-400 w-16 flex-shrink-0">브랜치</span>
+                  <span className="text-purple-600 dark:text-purple-400 font-mono">{branch || 'HEAD'}</span>
+                </div>
+                <div className="flex gap-2">
+                  <span className="text-gray-400 w-16 flex-shrink-0">기본 브랜치</span>
+                  <span className="text-gray-700 dark:text-gray-300 font-mono">
+                    {gitConfigData.defaultBranch || <span className="text-gray-400 italic">미설정</span>}
+                  </span>
+                </div>
               </div>
             )}
           </div>

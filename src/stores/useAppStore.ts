@@ -1,6 +1,6 @@
 import { create } from 'zustand'
 
-export type TabFileType = 'md' | 'image' | 'pdf' | 'docx' | 'video'
+export type TabFileType = 'md' | 'image' | 'pdf' | 'docx' | 'video' | 'other'
 
 export const PREDEFINED_TAGS = [
   { id: 'in-progress', label: '진행중', color: 'bg-yellow-100 text-yellow-700 dark:bg-yellow-900 dark:text-yellow-300' },
@@ -70,6 +70,8 @@ interface AppStore {
   // Sidebar tab
   sidebarTab: 'tree' | 'favorites' | 'recent' | 'gallery' | 'tags' | 'git'
   setSidebarTab: (tab: 'tree' | 'favorites' | 'recent' | 'gallery' | 'tags' | 'git') => void
+  gitSelectedProject: string | null
+  setGitSelectedProject: (path: string | null) => void
 
   // Favorites
   favorites: string[]
@@ -267,6 +269,8 @@ export const useAppStore = create<AppStore>((set, get) => ({
   // ── Sidebar tab ───────────────────────────────────────────────────────────
   sidebarTab: 'tree',
   setSidebarTab: (tab) => set({ sidebarTab: tab }),
+  gitSelectedProject: null,
+  setGitSelectedProject: (path) => set({ gitSelectedProject: path }),
 
   // ── Favorites ─────────────────────────────────────────────────────────────
   favorites: [],

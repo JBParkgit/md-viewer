@@ -85,6 +85,20 @@ export default function App() {
     return unsub
   }, [setTabFileChanged])
 
+  // ── Warn before closing with unsaved changes ─────────────────────────────
+  useEffect(() => {
+    const unsub = window.electronAPI.onBeforeClose(() => {
+      const hasDirty = useAppStore.getState().tabs.some(t => t.isDirty)
+      if (hasDirty) {
+        const ok = window.confirm('저장하지 않은 문서가 있습니다. 저장하지 않고 종료하시겠습니까?')
+        window.electronAPI.confirmClose(ok)
+      } else {
+        window.electronAPI.confirmClose(true)
+      }
+    })
+    return unsub
+  }, [])
+
   // ── Open file helpers ─────────────────────────────────────────────────────
   const IMAGE_EXTS = ['png', 'jpg', 'jpeg', 'gif', 'webp', 'svg', 'bmp', 'ico']
   const VIDEO_EXTS = ['mp4', 'webm', 'ogg', 'mov', 'avi', 'mkv']
@@ -123,12 +137,18 @@ export default function App() {
       }
       return
     }
-    const result = await window.electronAPI.readFile(filePath)
-    if (result.success && result.content !== undefined) {
-      openTab(filePath, fileName, result.content, 'md', preview)
-      useAppStore.getState().addRecentFile(filePath, fileName)
-      window.electronAPI.watchFile(filePath)
+    // Markdown files
+    if (ext === 'md' || ext === 'markdown') {
+      const result = await window.electronAPI.readFile(filePath)
+      if (result.success && result.content !== undefined) {
+        openTab(filePath, fileName, result.content, 'md', preview)
+        useAppStore.getState().addRecentFile(filePath, fileName)
+        window.electronAPI.watchFile(filePath)
+      }
+      return
     }
+    // Unsupported file types — show guide screen
+    openTab(filePath, fileName, '', 'other', preview)
   }, [openTab])
 
   // ── Dark mode class sync ──────────────────────────────────────────────────
@@ -157,6 +177,37 @@ export default function App() {
               ? <PdfViewer tab={activeTab} />
               : activeTab.fileType === 'docx'
               ? <DocxViewer tab={activeTab} />
+              : activeTab.fileType === 'other'
+              ? (
+                <div className="flex-1 flex flex-col items-center justify-center gap-4 text-gray-400 dark:text-gray-500">
+                  <svg className="w-16 h-16" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+                  </svg>
+                  <div className="text-center">
+                    <p className="text-lg font-medium text-gray-500 dark:text-gray-400">{activeTab.fileName}</p>
+                    <p className="text-sm mt-1">이 파일 형식은 Docuflow에서 미리볼 수 없습니다.</p>
+                    <p className="text-sm text-gray-400 dark:text-gray-500 mt-0.5">기본 프로그램으로 열려면 아래 버튼을 클릭하세요.</p>
+                  </div>
+                  <button
+                    onClick={() => window.electronAPI.openPath(activeTab.filePath)}
+                    className="flex items-center gap-2 px-4 py-2 rounded-lg bg-blue-600 hover:bg-blue-700 text-white text-sm transition-colors"
+                  >
+                    <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14" />
+                    </svg>
+                    기본 앱으로 열기
+                  </button>
+                  <button
+                    onClick={() => window.electronAPI.showItemInFolder(activeTab.filePath)}
+                    className="flex items-center gap-2 px-3 py-1.5 rounded-md text-xs text-gray-500 hover:text-gray-700 dark:hover:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors"
+                  >
+                    <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 7a2 2 0 012-2h4l2 2h8a2 2 0 012 2v9a2 2 0 01-2 2H5a2 2 0 01-2-2V7z" />
+                    </svg>
+                    탐색기에서 보기
+                  </button>
+                </div>
+              )
               : <MarkdownEditor tab={activeTab} />
           ) : (
             <WelcomeScreen />
