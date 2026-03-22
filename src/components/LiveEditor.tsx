@@ -11,6 +11,7 @@ interface Props {
   onSave: (content: string) => void
   onChange: (content: string) => void
   editorViewRef?: MutableRefObject<EditorView | null>
+  onScroll?: () => void
 }
 
 // Light theme for CodeMirror
@@ -80,7 +81,7 @@ const darkTheme = EditorView.theme({
   },
 }, { dark: true })
 
-export default function LiveEditor({ tab, onSave, onChange, editorViewRef }: Props) {
+export default function LiveEditor({ tab, onSave, onChange, editorViewRef, onScroll }: Props) {
   const { darkMode, fontSize, projects } = useAppStore()
   const isDark = darkMode === 'dark' ||
     (darkMode === 'system' && document.documentElement.classList.contains('dark'))
@@ -168,6 +169,13 @@ export default function LiveEditor({ tab, onSave, onChange, editorViewRef }: Pro
       { key: 'Ctrl-1', run: (view) => toggleLinePrefix(view, '# '), preventDefault: true },
       { key: 'Ctrl-2', run: (view) => toggleLinePrefix(view, '## '), preventDefault: true },
       { key: 'Ctrl-3', run: (view) => toggleLinePrefix(view, '### '), preventDefault: true },
+      { key: 'Mod-Shift-8', run: (view) => toggleLinePrefix(view, '- ') },
+      { key: 'Mod-Shift-7', run: (view) => toggleLinePrefix(view, '1. ') },
+      { key: 'Mod-Shift-9', run: (view) => toggleLinePrefix(view, '- [ ] ') },
+      { key: 'Mod-Shift-q', run: (view) => toggleLinePrefix(view, '> ') },
+      { key: 'Mod-Shift-h', run: (view) => wrapSelection(view, '==', '==') },
+      { key: 'Mod-Shift-e', run: (view) => { const pos = view.state.selection.main.head; view.dispatch({ changes: { from: pos, insert: '\n```\n\n```\n' }, selection: { anchor: pos + 5 } }); return true } },
+      { key: 'Mod-Shift-i', run: (view) => { const pos = view.state.selection.main.head; view.dispatch({ changes: { from: pos, insert: '![설명](images/)' }, selection: { anchor: pos + 10 } }); return true } },
     ])
   ), [onSave, wrapSelection, toggleLinePrefix])
 
@@ -299,6 +307,16 @@ export default function LiveEditor({ tab, onSave, onChange, editorViewRef }: Pro
     }
   }, [])
 
+  // Convert single newlines to double newlines on paste (so preview shows line breaks)
+  const pasteHandler = useMemo(() => EditorView.clipboardInputFilter.of((text) => {
+    const hasDoubleNewlines = text.includes('\n\n')
+    const hasSingleNewlines = text.includes('\n')
+    if (hasSingleNewlines && !hasDoubleNewlines) {
+      return text.replace(/\n/g, '\n\n')
+    }
+    return text
+  }), [])
+
   const extensions = useMemo(() => [
     markdown({
       base: markdownLanguage,
@@ -307,8 +325,9 @@ export default function LiveEditor({ tab, onSave, onChange, editorViewRef }: Pro
     EditorView.lineWrapping,
     keymap.of([indentWithTab]),
     saveKeymap,
+    pasteHandler,
     isDark ? darkTheme : lightTheme,
-  ], [isDark, saveKeymap])
+  ], [isDark, saveKeymap, pasteHandler])
 
   const handleChange = useCallback((value: string) => {
     if (tab.isPreview) {
@@ -320,12 +339,21 @@ export default function LiveEditor({ tab, onSave, onChange, editorViewRef }: Pro
   const handleCreateEditor = useCallback((view: EditorView) => {
     if (editorViewRef) editorViewRef.current = view
     attachDropListeners(view)
-    // Ctrl+1/2/3 heading shortcuts via DOM (CodeMirror keymap may not catch number keys)
+    // Scroll sync
+    if (onScroll) {
+      view.scrollDOM.addEventListener('scroll', onScroll)
+    }
+    // Keyboard shortcuts via DOM (CodeMirror keymap may not catch number keys)
     view.dom.addEventListener('keydown', (e) => {
       if ((e.ctrlKey || e.metaKey) && !e.shiftKey && !e.altKey) {
         if (e.key === '1') { e.preventDefault(); toggleLinePrefix(view, '# ') }
         else if (e.key === '2') { e.preventDefault(); toggleLinePrefix(view, '## ') }
         else if (e.key === '3') { e.preventDefault(); toggleLinePrefix(view, '### ') }
+      }
+      if ((e.ctrlKey || e.metaKey) && e.shiftKey && !e.altKey) {
+        if (e.key === '*' || e.key === '8') { e.preventDefault(); toggleLinePrefix(view, '- ') }
+        else if (e.key === '&' || e.key === '7') { e.preventDefault(); toggleLinePrefix(view, '1. ') }
+        else if (e.key === '(' || e.key === '9') { e.preventDefault(); toggleLinePrefix(view, '- [ ] ') }
       }
     })
   }, [editorViewRef, attachDropListeners, toggleLinePrefix])

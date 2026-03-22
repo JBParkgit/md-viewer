@@ -1,7 +1,7 @@
 import { useAppStore } from '../stores/useAppStore'
 
 export default function Toolbar() {
-  const { addProject, darkMode, setDarkMode, fontSize, setFontSize, showTOC, setShowTOC } = useAppStore()
+  const { addProject, darkMode, setDarkMode, fontSize, setFontSize, fontFamily, setFontFamily, showTOC, setShowTOC } = useAppStore()
 
   const handleAddProject = async () => {
     const folder = await window.electronAPI.openFolder()
@@ -37,6 +37,24 @@ export default function Toolbar() {
       </button>
 
       <div className="flex-1" />
+
+      {/* Font family */}
+      <div className="flex items-center" style={{ WebkitAppRegion: 'no-drag' } as React.CSSProperties}>
+        <select
+          value={fontFamily}
+          onChange={e => setFontFamily(e.target.value)}
+          className="text-xs px-1.5 py-1 rounded border border-gray-200 dark:border-gray-600 bg-white dark:bg-gray-700 text-gray-700 dark:text-gray-300 focus:outline-none cursor-pointer"
+          title="글꼴 변경"
+        >
+          <option value="default">시스템 기본</option>
+          <option value="pretendard">Pretendard</option>
+          <option value="noto-sans">Noto Sans KR</option>
+          <option value="nanumgothic">나눔고딕</option>
+          <option value="nanummyeongjo">나눔명조</option>
+          <option value="malgun">맑은 고딕</option>
+          <option value="gulim">굴림</option>
+        </select>
+      </div>
 
       {/* Font size */}
       <div className="flex items-center gap-1" style={{ WebkitAppRegion: 'no-drag' } as React.CSSProperties}>

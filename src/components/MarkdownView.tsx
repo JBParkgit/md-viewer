@@ -1,4 +1,4 @@
-import { useRef, useEffect, useState, useCallback } from 'react'
+import { useRef, useEffect, useState, useCallback, useMemo } from 'react'
 import ReactMarkdown from 'react-markdown'
 import remarkGfm from 'remark-gfm'
 import rehypeSanitize from 'rehype-sanitize'
@@ -11,6 +11,8 @@ import { getTagColorClasses } from './TagPanel'
 
 interface Props {
   tab: Tab
+  scrollRef?: React.MutableRefObject<HTMLDivElement | null>
+  lineNumbers?: boolean
 }
 
 function TagBadges({ tags }: { tags: string[] }) {
@@ -29,12 +31,38 @@ function TagBadges({ tags }: { tags: string[] }) {
   )
 }
 
-export default function MarkdownView({ tab }: Props) {
+export default function MarkdownView({ tab, scrollRef, lineNumbers }: Props) {
   const { darkMode, setTabScrollPos } = useAppStore()
   const isDark = darkMode === 'dark' ||
     (darkMode === 'system' && document.documentElement.classList.contains('dark'))
   const containerRef = useRef<HTMLDivElement>(null)
   const [modalImage, setModalImage] = useState<string | null>(null)
+
+  // Wire up external scroll ref
+  useEffect(() => {
+    if (scrollRef) scrollRef.current = containerRef.current
+  }, [scrollRef])
+
+  // Build line map: for each source line, which content does it start?
+  const lineMap = useMemo(() => {
+    if (!lineNumbers) return null
+    const stripped = stripFrontmatter(tab.content)
+    const lines = stripped.split('\n')
+    const map: Map<string, number> = new Map()
+    // Map first few words of each non-empty line to its line number (in stripped content)
+    // We'll use this to match rendered text to source lines
+    const fmLines = tab.content.split('\n')
+    const fmMatch = tab.content.match(/^---\r?\n[\s\S]*?\r?\n---\r?\n?/)
+    const offset = fmMatch ? fmMatch[0].split('\n').length - 1 : 0
+    lines.forEach((line, i) => {
+      const trimmed = line.trim()
+      if (trimmed) {
+        // Store line number (1-based, accounting for frontmatter offset)
+        map.set(trimmed.slice(0, 60), i + 1 + offset)
+      }
+    })
+    return map
+  }, [tab.content, lineNumbers])
 
   // Restore scroll position
   useEffect(() => {
@@ -49,6 +77,19 @@ export default function MarkdownView({ tab }: Props) {
       setTabScrollPos(tab.id, containerRef.current.scrollTop)
     }
   }, [tab.id, setTabScrollPos])
+
+  // After render: assign data-line attributes to block elements
+  const markdownBodyRef = useRef<HTMLDivElement>(null)
+  useEffect(() => {
+    if (!lineNumbers || !lineMap || !markdownBodyRef.current) return
+    const blocks = markdownBodyRef.current.querySelectorAll('h1,h2,h3,h4,h5,h6,p,li,blockquote,pre,table,hr')
+    blocks.forEach(el => {
+      const text = (el.textContent || '').trim().slice(0, 60)
+      if (text && lineMap.has(text)) {
+        el.setAttribute('data-line', String(lineMap.get(text)))
+      }
+    })
+  }, [tab.content, lineNumbers, lineMap])
 
   // Convert local file paths to file:// URLs
   const resolveImageSrc = (src: string): string => {
@@ -77,7 +118,7 @@ export default function MarkdownView({ tab }: Props) {
         {parseFrontmatterTags(tab.content).length > 0 && (
           <TagBadges tags={parseFrontmatterTags(tab.content)} />
         )}
-        <div className="markdown-body text-gray-900 dark:text-gray-100">
+        <div ref={markdownBodyRef} className="markdown-body text-gray-900 dark:text-gray-100">
           <ReactMarkdown
             remarkPlugins={[remarkGfm]}
             rehypePlugins={[rehypeSanitize]}

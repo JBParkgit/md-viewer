@@ -97,6 +97,8 @@ interface AppStore {
   setDarkMode: (mode: 'system' | 'light' | 'dark') => void
   fontSize: number
   setFontSize: (size: number) => void
+  fontFamily: string
+  setFontFamily: (font: string) => void
   showTOC: boolean
   setShowTOC: (show: boolean) => void
 }
@@ -357,6 +359,22 @@ export const useAppStore = create<AppStore>((set, get) => ({
     window.electronAPI.storeSet('fontSize', clamped)
     document.documentElement.style.setProperty('--md-font-size', `${clamped}px`)
     set({ fontSize: clamped })
+  },
+
+  fontFamily: 'default',
+  setFontFamily: (font) => {
+    window.electronAPI.storeSet('fontFamily', font)
+    const families: Record<string, string> = {
+      'default': "-apple-system, BlinkMacSystemFont, 'Segoe UI', 'Malgun Gothic', sans-serif",
+      'pretendard': "'Pretendard', 'Malgun Gothic', sans-serif",
+      'noto-sans': "'Noto Sans KR', 'Malgun Gothic', sans-serif",
+      'nanumgothic': "'NanumGothic', 'Malgun Gothic', sans-serif",
+      'nanummyeongjo': "'NanumMyeongjo', 'Batang', serif",
+      'malgun': "'Malgun Gothic', sans-serif",
+      'gulim': "'Gulim', sans-serif",
+    }
+    document.documentElement.style.setProperty('--md-font-family', families[font] || families['default'])
+    set({ fontFamily: font })
   },
 
   showTOC: true,

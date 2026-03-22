@@ -180,12 +180,22 @@ export default function ProjectTree({ project, projectIndex, searchQuery, onOpen
     setContextMenu(null)
     setNewFileName('')
     setIsCreatingFile(true)
-    // Expand the project if collapsed
     if (project.collapsed) toggleProjectCollapsed(project.id)
-    setTimeout(() => {
-      newFileInputRef.current?.focus()
-    }, 50)
   }
+
+  // Auto-focus new file input when it appears
+  useEffect(() => {
+    if (isCreatingFile) {
+      const tryFocus = () => {
+        if (newFileInputRef.current) {
+          newFileInputRef.current.focus()
+        } else {
+          requestAnimationFrame(tryFocus)
+        }
+      }
+      requestAnimationFrame(tryFocus)
+    }
+  }, [isCreatingFile])
 
   const commitCreateFile = async () => {
     const name = newFileName.trim()
@@ -222,7 +232,6 @@ export default function ProjectTree({ project, projectIndex, searchQuery, onOpen
         setNewFileName('')
         setIsCreatingFile(true)
         if (project.collapsed) toggleProjectCollapsed(project.id)
-        setTimeout(() => newFileInputRef.current?.focus(), 50)
       }
     }
     window.addEventListener('create-file-in-project', handler)
@@ -236,8 +245,20 @@ export default function ProjectTree({ project, projectIndex, searchQuery, onOpen
     setNewFolderName('')
     setIsCreatingFolder(true)
     if (project.collapsed) toggleProjectCollapsed(project.id)
-    setTimeout(() => newFolderInputRef.current?.focus(), 50)
   }
+
+  useEffect(() => {
+    if (isCreatingFolder) {
+      const tryFocus = () => {
+        if (newFolderInputRef.current) {
+          newFolderInputRef.current.focus()
+        } else {
+          requestAnimationFrame(tryFocus)
+        }
+      }
+      requestAnimationFrame(tryFocus)
+    }
+  }, [isCreatingFolder])
 
   const commitCreateFolder = async () => {
     const name = newFolderName.trim()
@@ -271,7 +292,6 @@ export default function ProjectTree({ project, projectIndex, searchQuery, onOpen
         setNewFolderName('')
         setIsCreatingFolder(true)
         if (project.collapsed) toggleProjectCollapsed(project.id)
-        setTimeout(() => newFolderInputRef.current?.focus(), 50)
       }
     }
     window.addEventListener('create-folder-in-project', handler)

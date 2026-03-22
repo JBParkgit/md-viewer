@@ -430,6 +430,43 @@ interface SplitViewProps {
   editorViewRef?: React.MutableRefObject<EditorView | null>
 }
 
+// ── Sync scroll: editor → preview ────────────────────────────────────────────
+function useSyncScroll(editorViewRef: React.MutableRefObject<EditorView | null> | undefined, previewRef: React.RefObject<HTMLDivElement | null>) {
+  const lockRef = useRef(false)
+  const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+
+  const sync = useCallback(() => {
+    const view = editorViewRef?.current
+    const preview = previewRef.current
+    if (!view || !preview || lockRef.current) return
+
+    const rect = view.dom.getBoundingClientRect()
+    const topPos = view.posAtCoords({ x: rect.left + 10, y: rect.top + 5 })
+    if (topPos === null) return
+    const topLine = view.state.doc.lineAt(topPos).number
+
+    // Find closest data-line element
+    const els = preview.querySelectorAll('[data-line]')
+    let best: Element | null = null
+    let bestDist = Infinity
+    for (const el of els) {
+      const ln = parseInt(el.getAttribute('data-line') || '0')
+      const d = Math.abs(ln - topLine)
+      if (d < bestDist) { bestDist = d; best = el }
+    }
+    if (best) {
+      lockRef.current = true
+      const container = preview
+      const elTop = (best as HTMLElement).offsetTop
+      container.scrollTop = elTop - 10
+      if (timerRef.current) clearTimeout(timerRef.current)
+      timerRef.current = setTimeout(() => { lockRef.current = false }, 80)
+    }
+  }, [editorViewRef, previewRef])
+
+  return sync
+}
+
 // ── Markdown Formatting Toolbar ──────────────────────────────────────────────
 interface MdToolbarProps {
   editorViewRef: React.MutableRefObject<EditorView | null>
@@ -548,11 +585,11 @@ function MdToolbar({ editorViewRef, onTableClick }: MdToolbarProps) {
         <span className="text-xs italic">I</span>
       </button>
       {/* Strikethrough */}
-      <button onClick={() => wrap('~~', '~~')} className={btnCls} title="취소선">
+      <button onClick={() => wrap('~~', '~~')} className={btnCls} title="취소선 (Ctrl+Shift+S)">
         <span className="text-xs line-through">S</span>
       </button>
       {/* Inline code */}
-      <button onClick={() => wrap('`', '`')} className={btnCls} title="인라인 코드">
+      <button onClick={() => wrap('`', '`')} className={btnCls} title="인라인 코드 (Ctrl+E)">
         <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
           <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 20l4-16m4 4l4 4-4 4M6 16l-4-4 4-4" />
         </svg>
@@ -560,19 +597,19 @@ function MdToolbar({ editorViewRef, onTableClick }: MdToolbarProps) {
       <div className={sepCls} />
 
       {/* Unordered list */}
-      <button onClick={() => wrapLine('- ')} className={btnCls} title="목록">
+      <button onClick={() => wrapLine('- ')} className={btnCls} title="목록 (Ctrl+Shift+8)">
         <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
           <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 6h16M4 12h16M4 18h16" />
         </svg>
       </button>
       {/* Ordered list */}
-      <button onClick={() => wrapLineNumbered()} className={btnCls} title="번호 목록">
+      <button onClick={() => wrapLineNumbered()} className={btnCls} title="번호 목록 (Ctrl+Shift+7)">
         <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
           <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 6h16M4 12h16M4 18h8" />
         </svg>
       </button>
       {/* Checklist */}
-      <button onClick={() => wrapLine('- [ ] ')} className={btnCls} title="체크리스트">
+      <button onClick={() => wrapLine('- [ ] ')} className={btnCls} title="체크리스트 (Ctrl+Shift+9)">
         <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
           <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-6 9l2 2 4-4" />
         </svg>
@@ -580,19 +617,19 @@ function MdToolbar({ editorViewRef, onTableClick }: MdToolbarProps) {
       <div className={sepCls} />
 
       {/* Blockquote */}
-      <button onClick={() => wrapLine('> ')} className={btnCls} title="인용">
+      <button onClick={() => wrapLine('> ')} className={btnCls} title="인용 (Ctrl+Shift+Q)">
         <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
           <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 10h.01M12 10h.01M16 10h.01M9 16H5a2 2 0 01-2-2V6a2 2 0 012-2h14a2 2 0 012 2v8a2 2 0 01-2 2h-5l-5 5v-5z" />
         </svg>
       </button>
       {/* Link */}
-      <button onClick={() => wrap('[', '](url)')} className={btnCls} title="링크">
+      <button onClick={() => wrap('[', '](url)')} className={btnCls} title="링크 (Ctrl+K)">
         <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
           <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" />
         </svg>
       </button>
       {/* Image */}
-      <button onClick={() => insert('![alt](url)')} className={btnCls} title="이미지">
+      <button onClick={() => insert('![alt](url)')} className={btnCls} title="이미지 (Ctrl+Shift+I)">
         <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
           <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z" />
         </svg>
@@ -600,7 +637,7 @@ function MdToolbar({ editorViewRef, onTableClick }: MdToolbarProps) {
       <div className={sepCls} />
 
       {/* Code block */}
-      <button onClick={() => insert('\n```\n코드\n```\n')} className={btnCls} title="코드 블록">
+      <button onClick={() => insert('\n```\n코드\n```\n')} className={btnCls} title="코드 블록 (Ctrl+Shift+E)">
         <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
           <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 9l3 3-3 3m5 0h3M5 20h14a2 2 0 002-2V6a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
         </svg>
@@ -612,7 +649,7 @@ function MdToolbar({ editorViewRef, onTableClick }: MdToolbarProps) {
         </svg>
       </button>
       {/* Horizontal rule */}
-      <button onClick={() => insert('\n---\n')} className={btnCls} title="구분선">
+      <button onClick={() => insert('\n---\n')} className={btnCls} title="구분선 (Ctrl+Shift+-)">
         <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
           <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 12h16" />
         </svg>
@@ -620,7 +657,7 @@ function MdToolbar({ editorViewRef, onTableClick }: MdToolbarProps) {
       <div className={sepCls} />
 
       {/* Highlight */}
-      <button onClick={() => wrap('==', '==')} className={btnCls} title="형광펜">
+      <button onClick={() => wrap('==', '==')} className={btnCls} title="형광펜 (Ctrl+Shift+H)">
         <svg className="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor">
           <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z" />
           <path strokeLinecap="round" strokeWidth={3} d="M3 21h18" className="text-yellow-400" stroke="currentColor" />
@@ -723,7 +760,8 @@ function MdToolbar({ editorViewRef, onTableClick }: MdToolbarProps) {
 function SplitView({ tab, onSave, onChange, showTOC, editorViewRef }: SplitViewProps) {
   const [splitRatio, setSplitRatio] = useState(50)
   const [isDragging, setIsDragging] = useState(false)
-  const containerRef = useState<HTMLDivElement | null>(null)
+  const previewScrollRef = useRef<HTMLDivElement | null>(null)
+  const syncScroll = useSyncScroll(editorViewRef, previewScrollRef)
 
   const handleDividerMouseDown = (e: React.MouseEvent) => {
     e.preventDefault()
@@ -759,6 +797,7 @@ function SplitView({ tab, onSave, onChange, showTOC, editorViewRef }: SplitViewP
           onSave={onSave}
           onChange={onChange}
           editorViewRef={editorViewRef}
+          onScroll={syncScroll}
         />
       </div>
 
@@ -774,7 +813,7 @@ function SplitView({ tab, onSave, onChange, showTOC, editorViewRef }: SplitViewP
           <div className="px-3 py-1 text-xs text-gray-400 dark:text-gray-500 bg-gray-50 dark:bg-gray-800 border-b border-gray-200 dark:border-gray-700 flex-shrink-0">
             미리보기
           </div>
-          <MarkdownView tab={tab} />
+          <MarkdownView tab={tab} scrollRef={previewScrollRef} lineNumbers />
         </div>
         {showTOC && <TableOfContents content={tab.content} />}
       </div>

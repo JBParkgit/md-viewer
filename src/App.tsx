@@ -27,9 +27,10 @@ export default function App() {
   // ── Initialize from electron-store ────────────────────────────────────────
   useEffect(() => {
     const init = async () => {
-      const [savedDark, savedSize, savedFavs, savedRecent, savedProjects, savedTags, savedTagColors] = await Promise.all([
+      const [savedDark, savedSize, savedFont, savedFavs, savedRecent, savedProjects, savedTags, savedTagColors] = await Promise.all([
         window.electronAPI.storeGet('darkMode'),
         window.electronAPI.storeGet('fontSize'),
+        window.electronAPI.storeGet('fontFamily'),
         window.electronAPI.storeGet('favorites'),
         window.electronAPI.storeGet('recentFiles'),
         window.electronAPI.storeGet('projects'),
@@ -39,6 +40,7 @@ export default function App() {
 
       const dark = (savedDark as string) || 'system'
       const size = (savedSize as number) || 16
+      const font = (savedFont as string) || 'default'
       const favs = (savedFavs as string[]) || []
       const recent = (savedRecent as { path: string; name: string }[]) || []
       const projs = (savedProjects as { path: string; name: string }[]) || []
@@ -46,6 +48,17 @@ export default function App() {
       const tagColors = (savedTagColors as Record<string, string>) || {}
 
       document.documentElement.style.setProperty('--md-font-size', `${size}px`)
+      // Apply saved font family
+      const families: Record<string, string> = {
+        'default': "-apple-system, BlinkMacSystemFont, 'Segoe UI', 'Malgun Gothic', sans-serif",
+        'pretendard': "'Pretendard', 'Malgun Gothic', sans-serif",
+        'noto-sans': "'Noto Sans KR', 'Malgun Gothic', sans-serif",
+        'nanumgothic': "'NanumGothic', 'Malgun Gothic', sans-serif",
+        'nanummyeongjo': "'NanumMyeongjo', 'Batang', serif",
+        'malgun': "'Malgun Gothic', sans-serif",
+        'gulim': "'Gulim', sans-serif",
+      }
+      document.documentElement.style.setProperty('--md-font-family', families[font] || families['default'])
 
       const isDark = await window.electronAPI.isDark()
       if (dark === 'dark' || (dark === 'system' && isDark)) {
@@ -65,6 +78,7 @@ export default function App() {
       useAppStore.setState({
         darkMode: dark as 'system' | 'light' | 'dark',
         fontSize: size,
+        fontFamily: font,
         favorites: favs,
         recentFiles: recent,
         projects: restoredProjects,

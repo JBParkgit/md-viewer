@@ -5,8 +5,8 @@
   "main": "dist-electron/main.js",
   "scripts": {
     "dev": "electron-vite dev",
-    "build": "electron-vite build && electron-builder && node -e \"const fs=require('fs');const p='release/win-unpacked';const d='release/Docuflow';if(fs.existsSync(d))fs.rmSync(d,{recursive:true});if(fs.existsSync(p))fs.renameSync(p,d);\"",
-    "build:win": "electron-vite build && electron-builder --win && node -e \"const fs=require('fs');const p='release/win-unpacked';const d='release/Docuflow';if(fs.existsSync(d))fs.rmSync(d,{recursive:true});if(fs.existsSync(p))fs.renameSync(p,d);\"",
+    "build": "electron-vite build && electron-builder && node scripts/rename-release.js",
+    "build:win": "electron-vite build && electron-builder --win && node scripts/rename-release.js",
     "preview": "electron-vite preview"
   },
   "dependencies": {

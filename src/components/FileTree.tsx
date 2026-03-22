@@ -95,6 +95,29 @@ function FileRow({ node, onOpenFile, onOpenFilePinned, searchQuery, depth, proje
   const renameInputRef = useRef<HTMLInputElement>(null)
   const nodeTags = fileTags[node.path] || []
 
+  const handleKeyDown = (e: React.KeyboardEvent) => {
+    if (e.key === 'Delete' && !isRenaming) {
+      e.preventDefault()
+      const name = node.name
+      const isDir = node.type === 'directory'
+      if (!window.confirm(`"${name}" ${isDir ? '폴더' : '파일'}을 휴지통으로 이동하시겠습니까?`)) return
+      window.electronAPI.deleteFile(node.path).then(result => {
+        if (result.success) {
+          if (!isDir) {
+            const openTab = tabs.find(t => t.filePath === node.path)
+            if (openTab) closeTab(openTab.id)
+          }
+        } else {
+          alert(result.error || '삭제 실패')
+        }
+      })
+    }
+    if (e.key === 'F2' && !isRenaming) {
+      e.preventDefault()
+      startRename()
+    }
+  }
+
   const startRename = () => {
     setContextMenu(null)
     setRenameValue(node.name)
@@ -216,7 +239,10 @@ function FileRow({ node, onOpenFile, onOpenFilePinned, searchQuery, depth, proje
             setOpen(willOpen)
             if (willOpen && projectId) setLastOpenedDir(projectId, displayNode.path)
           }}
-          className={`flex items-center gap-1.5 py-1 cursor-pointer hover:bg-gray-100 dark:hover:bg-gray-700 rounded text-xs ${isDragOver ? 'bg-blue-50 dark:bg-blue-900/30 outline outline-1 outline-blue-400' : ''}`}
+          onContextMenu={(e) => { e.preventDefault(); e.stopPropagation(); setContextMenu({ x: e.clientX, y: e.clientY }) }}
+          onKeyDown={handleKeyDown}
+          tabIndex={0}
+          className={`flex items-center gap-1.5 py-1 cursor-pointer hover:bg-gray-100 dark:hover:bg-gray-700 rounded text-xs focus:outline-none focus:ring-1 focus:ring-inset focus:ring-blue-400 ${isDragOver ? 'bg-blue-50 dark:bg-blue-900/30 outline outline-1 outline-blue-400' : ''}`}
           style={{ paddingLeft: `${8 + depth * 14}px`, paddingRight: '8px' }}
         >
           <svg
@@ -236,7 +262,7 @@ function FileRow({ node, onOpenFile, onOpenFilePinned, searchQuery, depth, proje
               onKeyDown={handleRenameKeyDown}
               onBlur={commitRename}
               onClick={e => e.stopPropagation()}
-              className="flex-1 text-xs px-1 py-0 rounded border border-blue-400 bg-white dark:bg-gray-700 text-gray-900 dark:text-gray-100 focus:outline-none focus:ring-1 focus:ring-blue-400 min-w-0"
+              className="flex-1 text-xs px-1 py-0 rounded border border-blue-400 bg-white dark:bg-gray-700 text-gray-900 dark:text-gray-100 focus:outline-none focus:ring-1 focus:ring-inset focus:ring-blue-400 min-w-0"
             />
           ) : (
             <span className="truncate text-gray-700 dark:text-gray-300">
@@ -273,6 +299,50 @@ function FileRow({ node, onOpenFile, onOpenFilePinned, searchQuery, depth, proje
             ))}
           </div>
         )}
+
+        {/* Directory context menu */}
+        {contextMenu && (
+          <>
+            <div className="fixed inset-0 z-40" onClick={() => setContextMenu(null)} />
+            <div
+              className="fixed z-50 bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-600 rounded-lg shadow-xl py-1 min-w-44"
+              style={{ left: contextMenu.x, top: contextMenu.y }}
+            >
+              <button
+                onClick={() => { setContextMenu(null); startRename() }}
+                className="w-full flex items-center gap-2 px-3 py-1.5 text-xs hover:bg-gray-100 dark:hover:bg-gray-700 text-left"
+              >
+                <svg className="w-3.5 h-3.5 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z" />
+                </svg>
+                이름 변경
+              </button>
+              <button
+                onClick={() => { window.electronAPI.showItemInFolder(displayNode.path); setContextMenu(null) }}
+                className="w-full flex items-center gap-2 px-3 py-1.5 text-xs hover:bg-gray-100 dark:hover:bg-gray-700 text-left"
+              >
+                <svg className="w-3.5 h-3.5 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 7a2 2 0 012-2h4l2 2h8a2 2 0 012 2v9a2 2 0 01-2 2H5a2 2 0 01-2-2V7z" />
+                </svg>
+                탐색기에서 보기
+              </button>
+              <div className="my-1 border-t border-gray-100 dark:border-gray-700" />
+              <button
+                onClick={async () => {
+                  setContextMenu(null)
+                  if (!window.confirm(`"${displayNode.name}" 폴더를 휴지통으로 이동하시겠습니까?`)) return
+                  await window.electronAPI.deleteFile(displayNode.path)
+                }}
+                className="w-full flex items-center gap-2 px-3 py-1.5 text-xs hover:bg-red-50 dark:hover:bg-red-900/20 text-red-600 dark:text-red-400 text-left"
+              >
+                <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+                </svg>
+                삭제
+              </button>
+            </div>
+          </>
+        )}
       </div>
     )
   }
@@ -295,7 +365,9 @@ function FileRow({ node, onOpenFile, onOpenFilePinned, searchQuery, depth, proje
         onClick={handleClick}
         onDoubleClick={handleDoubleClick}
         onContextMenu={(e) => { e.preventDefault(); setContextMenu({ x: e.clientX, y: e.clientY }) }}
-        className={`flex items-center gap-1.5 py-1 rounded text-xs group cursor-pointer ${
+        onKeyDown={handleKeyDown}
+        tabIndex={0}
+        className={`flex items-center gap-1.5 py-1 rounded text-xs group cursor-pointer focus:outline-none focus:ring-1 focus:ring-inset focus:ring-blue-400 ${
           isActiveFile
             ? 'bg-blue-100 dark:bg-blue-900/50 text-blue-700 dark:text-blue-300'
             : 'hover:bg-gray-100 dark:hover:bg-gray-700 text-gray-600 dark:text-gray-400'
@@ -312,7 +384,7 @@ function FileRow({ node, onOpenFile, onOpenFilePinned, searchQuery, depth, proje
             onKeyDown={handleRenameKeyDown}
             onBlur={commitRename}
             onClick={e => e.stopPropagation()}
-            className="flex-1 text-xs px-1 py-0 rounded border border-blue-400 bg-white dark:bg-gray-700 text-gray-900 dark:text-gray-100 focus:outline-none focus:ring-1 focus:ring-blue-400 min-w-0"
+            className="flex-1 text-xs px-1 py-0 rounded border border-blue-400 bg-white dark:bg-gray-700 text-gray-900 dark:text-gray-100 focus:outline-none focus:ring-1 focus:ring-inset focus:ring-blue-400 min-w-0"
           />
         ) : (
           <span className="flex-1 truncate">
