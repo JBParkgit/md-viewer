@@ -9,6 +9,7 @@ import PdfViewer from './components/PdfViewer'
 import DocxViewer from './components/DocxViewer'
 import VideoPlayer from './components/VideoPlayer'
 import WelcomeScreen from './components/WelcomeScreen'
+import KanbanBoard from './components/KanbanBoard'
 import { isRecentlySaved } from './utils/recentSave'
 
 export default function App() {
@@ -20,6 +21,7 @@ export default function App() {
     addProject,
     openTab,
     setTabFileChanged,
+    sidebarTab,
   } = useAppStore()
 
   const activeTab = tabs.find(t => t.id === activeTabId) ?? null
@@ -180,11 +182,13 @@ export default function App() {
           onOpenFilePinned={(p, n) => openFile(p, n, false)}
         />
         <div className="flex-1 flex flex-col overflow-hidden">
-          <TabBar />
+          {sidebarTab !== 'kanban' && <TabBar />}
           <main className="flex-1 overflow-hidden">
-          {activeTab ? (
+          {sidebarTab === 'kanban' ? (
+            <KanbanBoard onOpenFile={(p, n) => { useAppStore.getState().setSidebarTab('tree'); openFile(p, n, false) }} />
+          ) : activeTab ? (
             activeTab.fileType === 'image'
-              ? <ImageViewer tab={activeTab} />
+              ? <ImageViewer tab={activeTab} onOpenFile={(p, n) => openFile(p, n, true)} />
               : activeTab.fileType === 'video'
               ? <VideoPlayer tab={activeTab} />
               : activeTab.fileType === 'pdf'

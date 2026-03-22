@@ -68,10 +68,14 @@ interface AppStore {
   setLastOpenedDir: (projectId: string, dirPath: string) => void
 
   // Sidebar tab
-  sidebarTab: 'tree' | 'favorites' | 'recent' | 'gallery' | 'tags' | 'git'
-  setSidebarTab: (tab: 'tree' | 'favorites' | 'recent' | 'gallery' | 'tags' | 'git') => void
+  sidebarTab: 'tree' | 'favorites' | 'recent' | 'gallery' | 'tags' | 'git' | 'kanban'
+  setSidebarTab: (tab: 'tree' | 'favorites' | 'recent' | 'gallery' | 'tags' | 'git' | 'kanban') => void
   gitSelectedProject: string | null
   setGitSelectedProject: (path: string | null) => void
+  kanbanProjectPath: string | null
+  setKanbanProjectPath: (path: string | null) => void
+  imageNavProjectPath: string | null
+  setImageNavProjectPath: (path: string | null) => void
 
   // Favorites
   favorites: string[]
@@ -273,6 +277,10 @@ export const useAppStore = create<AppStore>((set, get) => ({
   setSidebarTab: (tab) => set({ sidebarTab: tab }),
   gitSelectedProject: null,
   setGitSelectedProject: (path) => set({ gitSelectedProject: path }),
+  kanbanProjectPath: null,
+  setKanbanProjectPath: (path) => set({ kanbanProjectPath: path }),
+  imageNavProjectPath: null,
+  setImageNavProjectPath: (path) => set({ imageNavProjectPath: path }),
 
   // ── Favorites ─────────────────────────────────────────────────────────────
   favorites: [],

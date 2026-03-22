@@ -1,8 +1,9 @@
 import { useEffect, useRef, useState, useCallback, type WheelEvent, type MouseEvent } from 'react'
-import type { Tab } from '../stores/useAppStore'
+import { useAppStore, type Tab } from '../stores/useAppStore'
 
 interface Props {
   tab: Tab
+  onOpenFile?: (filePath: string, fileName: string) => void
 }
 
 interface ImgInfo {
@@ -23,7 +24,7 @@ function formatBytes(bytes: number) {
   return `${(bytes / 1024 / 1024).toFixed(1)} MB`
 }
 
-export default function ImageViewer({ tab }: Props) {
+export default function ImageViewer({ tab, onOpenFile }: Props) {
   const src = toFileUrl(tab.filePath)
   const ext = tab.fileName.split('.').pop()?.toUpperCase() ?? ''
 
@@ -37,7 +38,105 @@ export default function ImageViewer({ tab }: Props) {
   const [bgStyle, setBgStyle] = useState<'checker' | 'black' | 'white'>('checker')
 
   const dragging = useRef(false)
+  const [isDragging, setIsDragging] = useState(false)
   const lastMouse = useRef({ x: 0, y: 0 })
+
+  // ── Sibling images for prev/next navigation ─────────────────────────────
+  const IMAGE_EXTS = ['png', 'jpg', 'jpeg', 'gif', 'webp', 'svg', 'bmp', 'ico']
+  const projects = useAppStore(s => s.projects)
+  const [siblings, setSiblings] = useState<string[]>([])
+  const [currentIndex, setCurrentIndex] = useState(-1)
+  const siblingsRef = useRef<string[]>([])
+  const navProjectRef = useRef<string | null>(null)
+  const setImageNavProjectPath = useAppStore(s => s.setImageNavProjectPath)
+
+  // Keep ref in sync with state
+  useEffect(() => { siblingsRef.current = siblings }, [siblings])
+
+  useEffect(() => {
+    const normFilePath = tab.filePath.replace(/\\/g, '/')
+
+    // If file exists in current siblings list, just update index (stay in same project)
+    const curSiblings = siblingsRef.current
+    if (curSiblings.length > 0) {
+      const idx = curSiblings.findIndex(p => p.replace(/\\/g, '/') === normFilePath)
+      if (idx >= 0) {
+        setCurrentIndex(idx)
+        return
+      }
+    }
+
+    // File not in current list — detect project and rebuild
+    const dir = normFilePath.replace(/\/[^/]+$/, '')
+
+    // Prefer: 1) locked nav project ref, 2) store's imageNavProjectPath, 3) auto-detect
+    let project: typeof projects[0] | null = null
+    const candidates = [navProjectRef.current, useAppStore.getState().imageNavProjectPath]
+    for (const candidate of candidates) {
+      if (!candidate) continue
+      const p = projects.find(pr => pr.path === candidate)
+      if (p && normFilePath.startsWith(p.path.replace(/\\/g, '/') + '/')) {
+        project = p
+        break
+      }
+    }
+    if (!project) {
+      const matchingProjects = projects
+        .filter(p => normFilePath.startsWith(p.path.replace(/\\/g, '/') + '/'))
+        .sort((a, b) => b.path.length - a.path.length)
+      project = matchingProjects[0] ?? null
+    }
+
+    if (!project) {
+      navProjectRef.current = null
+      setImageNavProjectPath(null)
+      window.electronAPI.readDir(dir).then(nodes => {
+        const imgs = nodes
+          .filter(n => n.type === 'file' && IMAGE_EXTS.includes(n.name.split('.').pop()?.toLowerCase() ?? ''))
+          .map(n => n.path)
+          .sort((a, b) => a.localeCompare(b, 'ko'))
+        siblingsRef.current = imgs
+        setSiblings(imgs)
+        setCurrentIndex(imgs.findIndex(p => p.replace(/\\/g, '/') === normFilePath))
+      })
+      return
+    }
+
+    navProjectRef.current = project.path
+    setImageNavProjectPath(project.path)
+    window.electronAPI.listImages(project.path).then(imgs => {
+      const sorted = imgs.sort((a, b) => a.localeCompare(b, 'ko'))
+      siblingsRef.current = sorted
+      setSiblings(sorted)
+      setCurrentIndex(sorted.findIndex(p => p.replace(/\\/g, '/') === normFilePath))
+    })
+  }, [tab.filePath, projects])
+
+  const goPrev = useCallback(() => {
+    if (currentIndex <= 0 || !onOpenFile) return
+    const prev = siblingsRef.current[currentIndex - 1]
+    if (!prev) return
+    const name = prev.replace(/\\/g, '/').split('/').pop() || ''
+    onOpenFile(prev, name)
+  }, [currentIndex, onOpenFile])
+
+  const goNext = useCallback(() => {
+    if (currentIndex < 0 || currentIndex >= siblingsRef.current.length - 1 || !onOpenFile) return
+    const next = siblingsRef.current[currentIndex + 1]
+    if (!next) return
+    const name = next.replace(/\\/g, '/').split('/').pop() || ''
+    onOpenFile(next, name)
+  }, [currentIndex, onOpenFile])
+
+  // Keyboard navigation
+  useEffect(() => {
+    const handler = (e: KeyboardEvent) => {
+      if (e.key === 'ArrowLeft') goPrev()
+      if (e.key === 'ArrowRight') goNext()
+    }
+    window.addEventListener('keydown', handler)
+    return () => window.removeEventListener('keydown', handler)
+  }, [goPrev, goNext])
 
   // ── Fit to window ────────────────────────────────────────────────────────
   const applyFit = useCallback(() => {
@@ -110,24 +209,23 @@ export default function ImageViewer({ tab }: Props) {
   // ── Pan (drag) ────────────────────────────────────────────────────────────
   const handleMouseDown = (e: MouseEvent) => {
     if (e.button !== 0) return
-    // Don't start pan if clicking directly on the image (allow native drag)
-    if (e.target === imgRef.current) return
     e.preventDefault()
     dragging.current = true
+    setIsDragging(true)
     lastMouse.current = { x: e.clientX, y: e.clientY }
   }
 
   const handleMouseMove = (e: MouseEvent) => {
     if (!dragging.current) return
-    setOffset(o => ({
-      x: o.x + e.clientX - lastMouse.current.x,
-      y: o.y + e.clientY - lastMouse.current.y,
-    }))
+    e.preventDefault()
+    const dx = e.clientX - lastMouse.current.x
+    const dy = e.clientY - lastMouse.current.y
     lastMouse.current = { x: e.clientX, y: e.clientY }
+    setOffset(o => ({ x: o.x + dx, y: o.y + dy }))
     setFit('free')
   }
 
-  const handleMouseUp = () => { dragging.current = false }
+  const handleMouseUp = () => { dragging.current = false; setIsDragging(false) }
 
   // ── Context menu (right-click copy) ─────────────────────────────────────
   const [ctxMenu, setCtxMenu] = useState<{ x: number; y: number } | null>(null)
@@ -275,31 +373,60 @@ export default function ImageViewer({ tab }: Props) {
       {/* Canvas area */}
       <div
         ref={containerRef}
-        className={`flex-1 overflow-hidden flex items-center justify-center ${bgClass}`}
+        className={`flex-1 overflow-hidden flex items-center justify-center relative ${bgClass}`}
         onWheel={handleWheel}
         onMouseDown={handleMouseDown}
         onMouseMove={handleMouseMove}
         onMouseUp={handleMouseUp}
         onMouseLeave={handleMouseUp}
         onContextMenu={handleContextMenu}
-        style={{ cursor: dragging.current ? 'grabbing' : 'grab' }}
+        style={{ cursor: isDragging ? 'grabbing' : 'grab' }}
       >
         <img
           ref={imgRef}
           src={src}
           alt={tab.fileName}
           onLoad={handleImgLoad}
-          draggable
-          onDragStart={handleImgDragStart}
+          draggable={false}
+          onDragStart={e => e.preventDefault()}
           style={{
             transform: `translate(${offset.x}px, ${offset.y}px) scale(${scale})`,
             transformOrigin: 'center center',
-            transition: dragging.current ? 'none' : 'transform 0.05s',
+            transition: isDragging ? 'none' : 'transform 0.05s',
             maxWidth: 'none',
             userSelect: 'none',
+            pointerEvents: 'none',
             imageRendering: scale > 3 ? 'pixelated' : 'auto',
           }}
         />
+
+        {/* Prev / Next buttons */}
+        {onOpenFile && siblings.length > 1 && (
+          <>
+            <button
+              onClick={e => { e.stopPropagation(); goPrev() }}
+              disabled={currentIndex <= 0}
+              className={`absolute left-3 top-1/2 -translate-y-1/2 w-10 h-10 flex items-center justify-center rounded-full bg-black/30 hover:bg-black/50 text-white transition-all ${
+                currentIndex <= 0 ? 'opacity-30 cursor-default' : 'opacity-70 hover:opacity-100'
+              }`}
+            >
+              <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
+              </svg>
+            </button>
+            <button
+              onClick={e => { e.stopPropagation(); goNext() }}
+              disabled={currentIndex >= siblings.length - 1}
+              className={`absolute right-3 top-1/2 -translate-y-1/2 w-10 h-10 flex items-center justify-center rounded-full bg-black/30 hover:bg-black/50 text-white transition-all ${
+                currentIndex >= siblings.length - 1 ? 'opacity-30 cursor-default' : 'opacity-70 hover:opacity-100'
+              }`}
+            >
+              <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
+              </svg>
+            </button>
+          </>
+        )}
       </div>
 
       {/* Context menu */}
@@ -356,6 +483,7 @@ export default function ImageViewer({ tab }: Props) {
           <span>{imgInfo.fileSize}</span>
           <span>{ext}</span>
           <span>{Math.round(scale * 100)}%</span>
+          {siblings.length > 1 && <span>{currentIndex + 1} / {siblings.length}</span>}
         </div>
       )}
     </div>

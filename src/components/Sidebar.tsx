@@ -59,6 +59,15 @@ const TABS = [
     ),
   },
   {
+    id: 'kanban' as const,
+    title: '칸반 보드',
+    icon: (
+      <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.7} d="M9 17V7m0 10a2 2 0 01-2 2H5a2 2 0 01-2-2V7a2 2 0 012-2h2a2 2 0 012 2m0 10a2 2 0 002 2h2a2 2 0 002-2M9 7a2 2 0 012-2h2a2 2 0 012 2m0 10V7m0 10a2 2 0 002 2h2a2 2 0 002-2V7a2 2 0 00-2-2h-2a2 2 0 00-2 2" />
+      </svg>
+    ),
+  },
+  {
     id: 'git' as const,
     title: 'Git',
     icon: (
@@ -330,21 +339,20 @@ export default function Sidebar({ onOpenFile, onOpenFilePinned }: Props) {
                         <div
                           key={project.id}
                           data-project-tree
-                          draggable
-                          onDragStart={(e) => {
-                            e.dataTransfer.effectAllowed = 'move'
-                            e.dataTransfer.setData('text/plain', String(index))
-                          }}
                           onDragOver={(e) => {
+                            // Only show project reorder indicator for project drags, not file drags
+                            if (e.dataTransfer.types.includes('application/x-filepath') || e.dataTransfer.types.includes('application/x-filepaths')) return
                             e.preventDefault()
                             e.dataTransfer.dropEffect = 'move'
                             setDragOverIndex(index)
                           }}
                           onDragLeave={() => setDragOverIndex(null)}
                           onDrop={(e) => {
+                            // Only handle project reorder, not file drops
+                            if (e.dataTransfer.types.includes('application/x-filepath') || e.dataTransfer.types.includes('application/x-filepaths')) return
                             e.preventDefault()
                             const fromIndex = Number(e.dataTransfer.getData('text/plain'))
-                            reorderProject(fromIndex, index)
+                            if (!isNaN(fromIndex)) reorderProject(fromIndex, index)
                             setDragOverIndex(null)
                           }}
                           onDragEnd={() => setDragOverIndex(null)}
@@ -439,7 +447,42 @@ export default function Sidebar({ onOpenFile, onOpenFilePinned }: Props) {
 
           {/* ── 갤러리 탭 ── */}
           {sidebarTab === 'gallery' && (
-            <ImageGallery onOpenFile={onOpenFile} />
+            <ImageGallery onOpenFile={onOpenFile} onOpenFilePinned={onOpenFilePinned} />
+          )}
+
+          {/* ── 칸반 탭 (프로젝트 선택) ── */}
+          {sidebarTab === 'kanban' && (
+            <div className="p-2">
+              <div className="text-xs font-medium text-gray-500 dark:text-gray-400 px-2 py-1 mb-1">프로젝트 선택</div>
+              {projects.length === 0 ? (
+                <div className="flex flex-col items-center justify-center h-32 gap-2 text-gray-400 text-xs">
+                  <svg className="w-8 h-8" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M9 17V7m0 10a2 2 0 01-2 2H5a2 2 0 01-2-2V7a2 2 0 012-2h2a2 2 0 012 2m0 10a2 2 0 002 2h2a2 2 0 002-2M9 7a2 2 0 012-2h2a2 2 0 012 2m0 10V7" />
+                  </svg>
+                  <span>프로젝트를 먼저 추가하세요</span>
+                </div>
+              ) : (
+                projects.map(p => {
+                  const kanbanProject = useAppStore.getState().kanbanProjectPath
+                  return (
+                    <button
+                      key={p.id}
+                      onClick={() => useAppStore.getState().setKanbanProjectPath(p.path)}
+                      className={`w-full flex items-center gap-2 px-2 py-2 rounded-lg text-xs transition-colors ${
+                        kanbanProject === p.path
+                          ? 'bg-blue-50 dark:bg-blue-900/30 text-blue-600 dark:text-blue-400'
+                          : 'hover:bg-gray-100 dark:hover:bg-gray-700 text-gray-600 dark:text-gray-400'
+                      }`}
+                    >
+                      <svg className="w-4 h-4 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.7} d="M3 7a2 2 0 012-2h4l2 2h8a2 2 0 012 2v9a2 2 0 01-2 2H5a2 2 0 01-2-2V7z" />
+                      </svg>
+                      <span className="truncate">{p.name}</span>
+                    </button>
+                  )
+                })
+              )}
+            </div>
           )}
 
           {/* ── Git 탭 ── */}

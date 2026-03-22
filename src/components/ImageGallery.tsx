@@ -1,8 +1,9 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import { useAppStore } from '../stores/useAppStore'
 
 interface Props {
   onOpenFile: (filePath: string, fileName: string) => void
+  onOpenFilePinned?: (filePath: string, fileName: string) => void
 }
 
 interface MediaItem {
@@ -20,8 +21,12 @@ function toFileUrl(filePath: string) {
   return 'file:///' + filePath.replace(/\\/g, '/')
 }
 
-export default function ImageGallery({ onOpenFile }: Props) {
+export default function ImageGallery({ onOpenFile, onOpenFilePinned }: Props) {
   const projects = useAppStore(s => s.projects)
+  const activeTabPath = useAppStore(s => {
+    const tab = s.tabs.find(t => t.id === s.activeTabId)
+    return tab?.filePath ?? ''
+  })
   const [projectMedia, setProjectMedia] = useState<ProjectMedia[]>([])
   const [collapsed, setCollapsed] = useState<Record<string, boolean>>({})
   const [loading, setLoading] = useState(false)
@@ -37,9 +42,9 @@ export default function ImageGallery({ onOpenFile }: Props) {
       try {
         const results: ProjectMedia[] = []
         for (const project of projects) {
-          const imgs = await window.electronAPI.listImages(project.path)
+          const imgs = (await window.electronAPI.listImages(project.path)).sort((a, b) => a.localeCompare(b, 'ko'))
           let vids: string[] = []
-          try { vids = await window.electronAPI.listVideos(project.path) } catch {}
+          try { vids = (await window.electronAPI.listVideos(project.path)).sort((a, b) => a.localeCompare(b, 'ko')) } catch {}
           const items: MediaItem[] = [
             ...imgs.map(p => ({ path: p, type: 'image' as const })),
             ...vids.map(p => ({ path: p, type: 'video' as const })),
@@ -62,6 +67,46 @@ export default function ImageGallery({ onOpenFile }: Props) {
   const toggleCollapsed = (projectId: string) => {
     setCollapsed(prev => ({ ...prev, [projectId]: !prev[projectId] }))
   }
+
+  const activeRef = useRef<HTMLDivElement>(null)
+
+  // Determine which project section should show the highlight
+  const imageNavProjectPath = useAppStore(s => s.imageNavProjectPath)
+  const activeProjectId = (() => {
+    if (!activeTabPath) return null
+    const normActive = activeTabPath.replace(/\\/g, '/')
+    // If ImageViewer tells us which project it's navigating in, use that
+    if (imageNavProjectPath) {
+      const navProject = projects.find(p => p.path === imageNavProjectPath)
+      if (navProject) {
+        const pm = projectMedia.find(m => m.projectId === navProject.id)
+        if (pm && pm.items.some(i => i.path.replace(/\\/g, '/') === normActive)) {
+          return navProject.id
+        }
+      }
+    }
+    // Fallback: first project that contains this image
+    for (const pm of projectMedia) {
+      if (pm.items.some(i => i.path.replace(/\\/g, '/') === normActive)) {
+        return pm.projectId
+      }
+    }
+    return null
+  })()
+
+  useEffect(() => {
+    // Auto-expand only the owning project
+    if (activeTabPath && activeProjectId) {
+      if (collapsed[activeProjectId]) {
+        setCollapsed(prev => ({ ...prev, [activeProjectId]: false }))
+      }
+    }
+    setTimeout(() => {
+      if (activeRef.current) {
+        activeRef.current.scrollIntoView({ behavior: 'smooth', block: 'nearest' })
+      }
+    }, 50)
+  }, [activeTabPath, activeProjectId])
 
   const totalCount = projectMedia.reduce((sum, p) => sum + p.items.length, 0)
 
@@ -109,13 +154,28 @@ export default function ImageGallery({ onOpenFile }: Props) {
               <div className="grid grid-cols-2 gap-1.5 px-2 pb-2">
                 {items.map(item => {
                   const fileName = item.path.replace(/\\/g, '/').split('/').pop() || ''
+                  const isActive = item.path.replace(/\\/g, '/') === activeTabPath.replace(/\\/g, '/') && projectId === activeProjectId
                   return (
                     <div
                       key={item.path}
-                      onClick={() => onOpenFile(item.path, fileName)}
+                      ref={isActive ? activeRef : undefined}
+                      onClick={() => {
+                        const proj = projects.find(p => p.id === projectId)
+                        if (proj) useAppStore.getState().setImageNavProjectPath(proj.path)
+                        onOpenFile(item.path, fileName)
+                      }}
+                      onDoubleClick={() => {
+                        const proj = projects.find(p => p.id === projectId)
+                        if (proj) useAppStore.getState().setImageNavProjectPath(proj.path)
+                        onOpenFilePinned?.(item.path, fileName)
+                      }}
                       draggable
                       onDragStart={(e) => { e.preventDefault(); window.electronAPI.startDrag(item.path) }}
-                      className="group relative cursor-pointer rounded-lg overflow-hidden border border-gray-200 dark:border-gray-600 hover:border-blue-400 dark:hover:border-blue-500 transition-colors bg-gray-100 dark:bg-gray-700 aspect-square"
+                      className={`group relative cursor-pointer rounded-lg overflow-hidden border-2 transition-colors bg-gray-100 dark:bg-gray-700 aspect-square ${
+                        isActive
+                          ? 'border-blue-500 dark:border-blue-400 ring-1 ring-blue-500/30'
+                          : 'border-gray-200 dark:border-gray-600 hover:border-blue-400 dark:hover:border-blue-500'
+                      }`}
                       title={item.path}
                     >
                       {item.type === 'image' ? (
@@ -146,7 +206,9 @@ export default function ImageGallery({ onOpenFile }: Props) {
                           </div>
                         </div>
                       )}
-                      <div className="absolute bottom-0 left-0 right-0 px-1.5 py-1 bg-black/60 text-white text-xs truncate opacity-0 group-hover:opacity-100 transition-opacity">
+                      <div className={`absolute bottom-0 left-0 right-0 px-1.5 py-1 text-white text-xs truncate transition-opacity ${
+                        isActive ? 'opacity-100 bg-blue-600/80' : 'opacity-0 group-hover:opacity-100 bg-black/60'
+                      }`}>
                         {fileName}
                       </div>
                     </div>
