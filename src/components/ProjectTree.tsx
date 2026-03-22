@@ -369,7 +369,7 @@ export default function ProjectTree({ project, projectIndex, searchQuery, onOpen
       {/* Project header */}
       <div
         draggable
-        className={`group flex items-center gap-2 px-2 py-2 cursor-pointer transition-colors ${headerDragOver ? 'bg-blue-50 dark:bg-blue-900/30 outline outline-1 outline-blue-400' : isRenaming ? '' : color.header}`}
+        className={`group flex flex-wrap items-center gap-x-2 gap-y-0.5 px-2 py-1.5 cursor-pointer transition-colors ${headerDragOver ? 'bg-blue-50 dark:bg-blue-900/30 outline outline-1 outline-blue-400' : isRenaming ? '' : color.header}`}
         onClick={() => { if (!isRenaming) toggleProjectCollapsed(project.id) }}
         onContextMenu={(e) => { e.preventDefault(); if (!isRenaming) setContextMenu({ x: e.clientX, y: e.clientY }) }}
         onDragStart={(e) => {
@@ -454,54 +454,27 @@ export default function ProjectTree({ project, projectIndex, searchQuery, onOpen
           </>
         )}
 
-        {/* Hover actions */}
+        {/* Second row: git info + action buttons (right-aligned) */}
         {!isRenaming && (
-          <div className="flex items-center gap-0.5 opacity-0 group-hover:opacity-100 transition-opacity">
-            <button
-              onClick={startCreateFile}
-              className="w-5 h-5 flex items-center justify-center rounded hover:bg-gray-200 dark:hover:bg-gray-600"
-              title="새 마크다운 파일"
-            >
-              <svg className="w-3 h-3 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
-              </svg>
-            </button>
-            <button
-              onClick={startCreateFolder}
-              className="w-5 h-5 flex items-center justify-center rounded hover:bg-gray-200 dark:hover:bg-gray-600"
-              title="새 폴더"
-            >
-              <svg className="w-3 h-3 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 13h6m-3-3v6m-9 1V7a2 2 0 012-2h6l2 2h6a2 2 0 012 2v8a2 2 0 01-2 2H5a2 2 0 01-2-2z" />
-              </svg>
-            </button>
-            <button
-              onClick={startRename}
-              className="w-5 h-5 flex items-center justify-center rounded hover:bg-gray-200 dark:hover:bg-gray-600"
-              title="이름 변경"
-            >
-              <svg className="w-3 h-3 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z" />
-              </svg>
-            </button>
-            <button
-              onClick={(e) => { e.stopPropagation(); loadNodes(); loadGitStatus() }}
-              className="w-5 h-5 flex items-center justify-center rounded hover:bg-gray-200 dark:hover:bg-gray-600"
-              title="새로고침"
-            >
-              <svg className="w-3 h-3 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
-              </svg>
-            </button>
-            <button
-              onClick={(e) => { e.stopPropagation(); if (window.confirm(`"${project.name}" 프로젝트를 목록에서 제거하시겠습니까?`)) removeProject(project.id) }}
-              className="w-5 h-5 flex items-center justify-center rounded hover:bg-red-100 dark:hover:bg-red-900/30 hover:text-red-500"
-              title="프로젝트 제거"
-            >
-              <svg className="w-3 h-3 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
-              </svg>
-            </button>
+          <div className="w-full flex items-center justify-end gap-1 pl-6">
+            <div className="flex items-center gap-0.5">
+              <button onClick={startCreateFile} className="w-5 h-5 flex items-center justify-center rounded hover:bg-gray-200 dark:hover:bg-gray-600" title="새 마크다운 파일">
+                <svg className="w-3 h-3 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" /></svg>
+              </button>
+              <button onClick={startCreateFolder} className="w-5 h-5 flex items-center justify-center rounded hover:bg-gray-200 dark:hover:bg-gray-600" title="새 폴더">
+                <svg className="w-3 h-3 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 13h6m-3-3v6m-9 1V7a2 2 0 012-2h6l2 2h6a2 2 0 012 2v8a2 2 0 01-2 2H5a2 2 0 01-2-2z" /></svg>
+              </button>
+              <button onClick={startRename} className="w-5 h-5 flex items-center justify-center rounded hover:bg-gray-200 dark:hover:bg-gray-600" title="이름 변경">
+                <svg className="w-3 h-3 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z" /></svg>
+              </button>
+              <button onClick={(e) => { e.stopPropagation(); loadNodes(); loadGitStatus() }} className="w-5 h-5 flex items-center justify-center rounded hover:bg-gray-200 dark:hover:bg-gray-600" title="새로고침">
+                <svg className="w-3 h-3 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" /></svg>
+              </button>
+              <button onClick={(e) => { e.stopPropagation(); if (window.confirm(`"${project.name}" 프로젝트를 목록에서 제거하시겠습니까?`)) removeProject(project.id) }}
+                className="w-5 h-5 flex items-center justify-center rounded hover:bg-red-100 dark:hover:bg-red-900/30 hover:text-red-500" title="프로젝트 제거">
+                <svg className="w-3 h-3 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" /></svg>
+              </button>
+            </div>
           </div>
         )}
 

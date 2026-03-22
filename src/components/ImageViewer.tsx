@@ -128,6 +128,18 @@ export default function ImageViewer({ tab, onOpenFile }: Props) {
     onOpenFile(next, name)
   }, [currentIndex, onOpenFile])
 
+  // Preload adjacent images for smooth navigation
+  useEffect(() => {
+    const preload = (idx: number) => {
+      const path = siblingsRef.current[idx]
+      if (!path) return
+      const img = new Image()
+      img.src = toFileUrl(path)
+    }
+    if (currentIndex > 0) preload(currentIndex - 1)
+    if (currentIndex < siblingsRef.current.length - 1) preload(currentIndex + 1)
+  }, [currentIndex])
+
   // Keyboard navigation
   useEffect(() => {
     const handler = (e: KeyboardEvent) => {
@@ -143,20 +155,25 @@ export default function ImageViewer({ tab, onOpenFile }: Props) {
     const container = containerRef.current
     const img = imgRef.current
     if (!container || !img || !img.naturalWidth) return
-    const cw = container.clientWidth - 48
-    const ch = container.clientHeight - 48
+    const cw = container.clientWidth
+    const ch = container.clientHeight
     const scaleW = cw / img.naturalWidth
     const scaleH = ch / img.naturalHeight
-    setScale(Math.min(1, scaleW, scaleH))
+    // If image fits within container, show at original size; otherwise shrink to fit (no margin)
+    if (img.naturalWidth <= cw && img.naturalHeight <= ch) {
+      setScale(1)
+    } else {
+      setScale(Math.min(scaleW, scaleH))
+    }
     setOffset({ x: 0, y: 0 })
   }, [])
 
   // Load image info + fit on mount / tab change
   useEffect(() => {
-    setScale(1)
     setOffset({ x: 0, y: 0 })
     setFit('fit')
-    setImgInfo(null)
+    // Apply fit immediately if image ref is available (preloaded)
+    requestAnimationFrame(() => applyFit())
 
     window.electronAPI.stat(tab.filePath).then(s => {
       if (s) setImgInfo(prev => ({ ...prev!, fileSize: formatBytes(s.size) }))
@@ -171,6 +188,7 @@ export default function ImageViewer({ tab, onOpenFile }: Props) {
       naturalH: img.naturalHeight,
       fileSize: prev?.fileSize ?? '',
     }))
+    setOffset({ x: 0, y: 0 })
     applyFit()
   }
 
@@ -392,7 +410,7 @@ export default function ImageViewer({ tab, onOpenFile }: Props) {
           style={{
             transform: `translate(${offset.x}px, ${offset.y}px) scale(${scale})`,
             transformOrigin: 'center center',
-            transition: isDragging ? 'none' : 'transform 0.05s',
+            transition: 'none',
             maxWidth: 'none',
             userSelect: 'none',
             pointerEvents: 'none',

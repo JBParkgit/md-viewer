@@ -1,4 +1,4 @@
-import { useState, useRef } from 'react'
+import { useState, useRef, useMemo, useEffect } from 'react'
 import { useAppStore, PREDEFINED_TAGS } from '../stores/useAppStore'
 import { getFileGroup, FileTypeIcon } from '../utils/fileType'
 import type { FileNode } from '../types/electron'
@@ -23,6 +23,12 @@ function Highlighted({ text, query }: { text: string; query: string }) {
 
 // ── File row ───────────────────────────────────────────────────────────────
 
+interface SelectionProps {
+  selectedPaths: Set<string>
+  lastClickedPath: string | null
+  onSelect: (path: string, e: React.MouseEvent) => void
+}
+
 interface FileRowProps {
   node: FileNode
   onOpenFile: (filePath: string, fileName: string) => void
@@ -34,6 +40,8 @@ interface FileRowProps {
   toggleDir?: (path: string, open: boolean) => void
   gitStatusMap?: GitStatusMap
   projectPath?: string
+  selection?: SelectionProps
+  flatPaths?: string[]
 }
 
 function getDirGitStatus(dirPath: string, gitStatusMap?: GitStatusMap, projectPath?: string): { modified: number; added: number; deleted: number } | null {
@@ -74,7 +82,7 @@ function getGitDot(node: FileNode, gitStatusMap?: GitStatusMap, projectPath?: st
   return { color: 'text-gray-500', letter: st, title: st }
 }
 
-function FileRow({ node, onOpenFile, onOpenFilePinned, searchQuery, depth, projectId, openDirs, toggleDir, gitStatusMap, projectPath }: FileRowProps) {
+function FileRow({ node, onOpenFile, onOpenFilePinned, searchQuery, depth, projectId, openDirs, toggleDir, gitStatusMap, projectPath, selection, flatPaths }: FileRowProps) {
   const controlled = openDirs !== undefined && toggleDir !== undefined
   const [localOpen, setLocalOpen] = useState(!!searchQuery)
   const open = controlled ? openDirs.has(node.path) : localOpen
@@ -95,21 +103,25 @@ function FileRow({ node, onOpenFile, onOpenFilePinned, searchQuery, depth, proje
   const renameInputRef = useRef<HTMLInputElement>(null)
   const nodeTags = fileTags[node.path] || []
 
+  const isSelected = selection?.selectedPaths.has(node.path) ?? false
+
   const handleKeyDown = (e: React.KeyboardEvent) => {
     if (e.key === 'Delete' && !isRenaming) {
       e.preventDefault()
-      const name = node.name
-      const isDir = node.type === 'directory'
-      if (!window.confirm(`"${name}" ${isDir ? '폴더' : '파일'}을 휴지통으로 이동하시겠습니까?`)) return
-      window.electronAPI.deleteFile(node.path).then(result => {
-        if (result.success) {
-          if (!isDir) {
-            const openTab = tabs.find(t => t.filePath === node.path)
+      const targets = selection && selection.selectedPaths.size > 1 && isSelected
+        ? [...selection.selectedPaths]
+        : [node.path]
+      const msg = targets.length > 1
+        ? `${targets.length}개 항목을 휴지통으로 이동하시겠습니까?`
+        : `"${node.name}" ${node.type === 'directory' ? '폴더' : '파일'}을 휴지통으로 이동하시겠습니까?`
+      if (!window.confirm(msg)) return
+      targets.forEach(p => {
+        window.electronAPI.deleteFile(p).then(result => {
+          if (result.success) {
+            const openTab = tabs.find(t => t.filePath === p)
             if (openTab) closeTab(openTab.id)
           }
-        } else {
-          alert(result.error || '삭제 실패')
-        }
+        })
       })
     }
     if (e.key === 'F2' && !isRenaming) {
@@ -162,13 +174,16 @@ function FileRow({ node, onOpenFile, onOpenFilePinned, searchQuery, depth, proje
   const handleDragStart = (e: React.DragEvent) => {
     const group = getFileGroup(node.name)
     if (group === 'image' || group === 'video') {
-      // Native OS drag for external apps (PPT, Word, etc.)
       e.preventDefault()
       window.electronAPI.startDrag(node.path)
     } else {
-      // Internal drag for file moves
       e.dataTransfer.effectAllowed = 'copyMove'
-      e.dataTransfer.setData('application/x-filepath', node.path)
+      // If multiple selected and this item is selected, drag all selected
+      const paths = (selection && selection.selectedPaths.size > 1 && isSelected)
+        ? [...selection.selectedPaths]
+        : [node.path]
+      e.dataTransfer.setData('application/x-filepaths', JSON.stringify(paths))
+      e.dataTransfer.setData('application/x-filepath', node.path) // backward compat
       e.stopPropagation()
     }
   }
@@ -178,20 +193,27 @@ function FileRow({ node, onOpenFile, onOpenFilePinned, searchQuery, depth, proje
     e.preventDefault()
     e.stopPropagation()
     setIsDragOver(false)
-    const srcPath = e.dataTransfer.getData('application/x-filepath')
-    if (!srcPath) return
     const destDir = targetDirPath || node.path
-    if (srcPath === destDir) return
-    // Don't drop a parent into its own child
-    if (destDir.startsWith(srcPath + '\\') || destDir.startsWith(srcPath + '/')) return
-    const result = await window.electronAPI.move(srcPath, destDir)
-    if (!result.success) {
-      alert(result.error || '이동 실패')
+    // Try multi-path first, fallback to single
+    const multiData = e.dataTransfer.getData('application/x-filepaths')
+    const srcPaths: string[] = multiData ? JSON.parse(multiData) : []
+    if (srcPaths.length === 0) {
+      const single = e.dataTransfer.getData('application/x-filepath')
+      if (single) srcPaths.push(single)
+    }
+    if (srcPaths.length === 0) return
+    for (const srcPath of srcPaths) {
+      if (srcPath === destDir) continue
+      if (destDir.startsWith(srcPath + '\\') || destDir.startsWith(srcPath + '/')) continue
+      const result = await window.electronAPI.move(srcPath, destDir)
+      if (!result.success) {
+        alert(result.error || '이동 실패')
+      }
     }
   }
 
   const handleDirDragOver = (e: React.DragEvent) => {
-    if (e.dataTransfer.types.includes('application/x-filepath')) {
+    if (e.dataTransfer.types.includes('application/x-filepath') || e.dataTransfer.types.includes('application/x-filepaths')) {
       e.preventDefault()
       e.dataTransfer.dropEffect = 'move'
       setIsDragOver(true)
@@ -202,6 +224,13 @@ function FileRow({ node, onOpenFile, onOpenFilePinned, searchQuery, depth, proje
 
   const isFav = favorites.includes(node.path)
   const isActiveFile = tabs.find(t => t.id === activeTabId)?.filePath === node.path
+  const activeRowRef = useRef<HTMLDivElement>(null)
+
+  useEffect(() => {
+    if (isActiveFile && activeRowRef.current) {
+      activeRowRef.current.scrollIntoView({ behavior: 'smooth', block: 'nearest' })
+    }
+  }, [isActiveFile])
   const group = getFileGroup(node.name)
   const isMd = group === 'md'
   const isImage = group === 'image'
@@ -234,15 +263,24 @@ function FileRow({ node, onOpenFile, onOpenFilePinned, searchQuery, depth, proje
           onDrop={(e) => handleDirDrop(e, displayNode.path)}
           onDragOver={handleDirDragOver}
           onDragLeave={handleDirDragLeave}
-          onClick={() => {
+          onClick={(e) => {
+            if (e.ctrlKey || e.metaKey || e.shiftKey) {
+              selection?.onSelect(node.path, e)
+              return
+            }
             const willOpen = !open
             setOpen(willOpen)
             if (willOpen && projectId) setLastOpenedDir(projectId, displayNode.path)
+            selection?.onSelect(node.path, e)
           }}
           onContextMenu={(e) => { e.preventDefault(); e.stopPropagation(); setContextMenu({ x: e.clientX, y: e.clientY }) }}
           onKeyDown={handleKeyDown}
           tabIndex={0}
-          className={`flex items-center gap-1.5 py-1 cursor-pointer hover:bg-gray-100 dark:hover:bg-gray-700 rounded text-xs focus:outline-none focus:ring-1 focus:ring-inset focus:ring-blue-400 ${isDragOver ? 'bg-blue-50 dark:bg-blue-900/30 outline outline-1 outline-blue-400' : ''}`}
+          className={`flex items-center gap-1.5 py-1 cursor-pointer rounded text-xs focus:outline-none focus:ring-1 focus:ring-inset focus:ring-blue-400 ${
+            isDragOver ? 'bg-blue-50 dark:bg-blue-900/30 outline outline-1 outline-blue-400'
+            : isSelected ? 'bg-blue-100 dark:bg-blue-900/40'
+            : 'hover:bg-gray-100 dark:hover:bg-gray-700'
+          }`}
           style={{ paddingLeft: `${8 + depth * 14}px`, paddingRight: '8px' }}
         >
           <svg
@@ -295,6 +333,8 @@ function FileRow({ node, onOpenFile, onOpenFilePinned, searchQuery, depth, proje
                 toggleDir={toggleDir}
                 gitStatusMap={gitStatusMap}
                 projectPath={projectPath}
+                selection={selection}
+                flatPaths={flatPaths}
               />
             ))}
           </div>
@@ -348,8 +388,12 @@ function FileRow({ node, onOpenFile, onOpenFilePinned, searchQuery, depth, proje
   }
 
   // ── File ───────────────────────────────────────────────────────────────
-  // 싱글클릭 = preview 탭 / 더블클릭 = 고정 탭
-  const handleClick = () => {
+  const handleClick = (e: React.MouseEvent) => {
+    if (e.ctrlKey || e.metaKey || e.shiftKey) {
+      selection?.onSelect(node.path, e)
+      return
+    }
+    selection?.onSelect(node.path, e)
     onOpenFile(node.path, node.name)
   }
 
@@ -360,6 +404,7 @@ function FileRow({ node, onOpenFile, onOpenFilePinned, searchQuery, depth, proje
   return (
     <>
       <div
+        ref={isActiveFile ? activeRowRef : undefined}
         draggable
         onDragStart={handleDragStart}
         onClick={handleClick}
@@ -370,6 +415,8 @@ function FileRow({ node, onOpenFile, onOpenFilePinned, searchQuery, depth, proje
         className={`flex items-center gap-1.5 py-1 rounded text-xs group cursor-pointer focus:outline-none focus:ring-1 focus:ring-inset focus:ring-blue-400 ${
           isActiveFile
             ? 'bg-blue-100 dark:bg-blue-900/50 text-blue-700 dark:text-blue-300'
+            : isSelected
+            ? 'bg-blue-200 dark:bg-blue-800/60 text-gray-800 dark:text-gray-200'
             : 'hover:bg-gray-100 dark:hover:bg-gray-700 text-gray-600 dark:text-gray-400'
         }`}
         style={{ paddingLeft: `${8 + depth * 14}px`, paddingRight: '8px' }}
@@ -624,9 +671,20 @@ interface Props {
   toggleDir?: (path: string, open: boolean) => void
   gitStatusMap?: GitStatusMap
   projectPath?: string
+  selection?: SelectionProps
 }
 
-export default function FileTree({ nodes, onOpenFile, onOpenFilePinned, searchQuery, depth = 0, projectId, openDirs, toggleDir, gitStatusMap, projectPath }: Props) {
+function collectPaths(nodes: FileNode[]): string[] {
+  const result: string[] = []
+  for (const node of nodes) {
+    result.push(node.path)
+    if (node.children) result.push(...collectPaths(node.children))
+  }
+  return result
+}
+
+export default function FileTree({ nodes, onOpenFile, onOpenFilePinned, searchQuery, depth = 0, projectId, openDirs, toggleDir, gitStatusMap, projectPath, selection }: Props) {
+  const flatPaths = useMemo(() => collectPaths(nodes), [nodes])
   if (nodes.length === 0) {
     return (
       <div className="px-4 py-3 text-xs text-gray-400">
@@ -649,6 +707,8 @@ export default function FileTree({ nodes, onOpenFile, onOpenFilePinned, searchQu
           toggleDir={toggleDir}
           gitStatusMap={gitStatusMap}
           projectPath={projectPath}
+          selection={selection}
+          flatPaths={flatPaths}
         />
       ))}
     </div>
