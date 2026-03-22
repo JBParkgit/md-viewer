@@ -37,6 +37,7 @@ export default function TagPanel({ onOpenFile }: Props) {
   const [loading, setLoading] = useState(false)
   const [selectedTag, setSelectedTag] = useState<string | null>(null)
   const [colorMenuTag, setColorMenuTag] = useState<string | null>(null)
+  const [tagSearch, setTagSearch] = useState('')
 
   // Collect tags from all projects
   useEffect(() => {
@@ -65,6 +66,27 @@ export default function TagPanel({ onOpenFile }: Props) {
     }
   }
   const sortedTags = [...tagMap.entries()].sort((a, b) => b[1] - a[1])
+  const maxCount = sortedTags.length > 0 ? sortedTags[0][1] : 1
+
+  // Auto color based on count ratio
+  const COUNT_COLORS = [
+    { bg: 'bg-gray-100 dark:bg-gray-700', text: 'text-gray-600 dark:text-gray-400' },       // lowest
+    { bg: 'bg-blue-100 dark:bg-blue-900/40', text: 'text-blue-700 dark:text-blue-300' },
+    { bg: 'bg-cyan-100 dark:bg-cyan-900/40', text: 'text-cyan-700 dark:text-cyan-300' },
+    { bg: 'bg-green-100 dark:bg-green-900/40', text: 'text-green-700 dark:text-green-300' },
+    { bg: 'bg-amber-100 dark:bg-amber-900/40', text: 'text-amber-700 dark:text-amber-300' },
+    { bg: 'bg-rose-100 dark:bg-rose-900/40', text: 'text-rose-700 dark:text-rose-300' },     // highest
+  ]
+  function getCountColor(count: number) {
+    if (maxCount <= 1) return COUNT_COLORS[1]
+    const ratio = (count - 1) / (maxCount - 1) // 0 ~ 1
+    const idx = Math.min(Math.floor(ratio * COUNT_COLORS.length), COUNT_COLORS.length - 1)
+    return COUNT_COLORS[idx]
+  }
+
+  const filteredTags = tagSearch
+    ? sortedTags.filter(([tag]) => tag.toLowerCase().includes(tagSearch.toLowerCase()))
+    : sortedTags
 
   // Files matching selected tag
   const filteredFiles = selectedTag
@@ -94,12 +116,37 @@ export default function TagPanel({ onOpenFile }: Props) {
 
   return (
     <div className="py-1">
+      {/* Tag search */}
+      <div className="px-3 pt-2 pb-1">
+        <div className="relative">
+          <input
+            type="text"
+            value={tagSearch}
+            onChange={e => setTagSearch(e.target.value)}
+            placeholder="태그 검색..."
+            className="w-full pl-7 pr-2 py-1.5 text-xs rounded-md border border-gray-200 dark:border-gray-600 bg-white dark:bg-gray-700 focus:outline-none focus:border-blue-400"
+          />
+          <svg className="absolute left-2 top-2 w-3.5 h-3.5 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
+          </svg>
+          {tagSearch && (
+            <button onClick={() => setTagSearch('')} className="absolute right-2 top-2 text-gray-400 hover:text-gray-600">
+              <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+              </svg>
+            </button>
+          )}
+        </div>
+      </div>
+
       {/* Tag cloud */}
       <div className="px-3 py-2">
-        <div className="text-xs text-gray-400 mb-2">태그 ({sortedTags.length}개)</div>
+        <div className="text-xs text-gray-400 mb-2">태그 ({filteredTags.length}{tagSearch ? ` / ${sortedTags.length}` : ''}개)</div>
         <div className="flex flex-wrap gap-1.5">
-          {sortedTags.map(([tag, count]) => {
-            const colors = getTagColorClasses(tagColors, tag)
+          {filteredTags.map(([tag, count]) => {
+            const countColor = getCountColor(count)
+            const userColor = tagColors[tag] ? getTagColorClasses(tagColors, tag) : null
+            const colors = userColor || countColor
             const isActive = selectedTag === tag
             return (
               <button
