@@ -1,4 +1,5 @@
 import { create } from 'zustand'
+import { initProjectTemplates } from '../utils/mdTemplates'
 
 export type TabFileType = 'md' | 'image' | 'pdf' | 'docx' | 'video' | 'other'
 
@@ -95,6 +96,10 @@ interface AppStore {
   tagColors: Record<string, string>
   setTagColor: (tag: string, color: string) => void
   removeTagColor: (tag: string) => void
+
+  // Project colors (projectId -> color index)
+  projectColors: Record<string, number>
+  setProjectColor: (projectId: string, colorIndex: number) => void
 
   // Settings
   darkMode: 'system' | 'light' | 'dark'
@@ -221,6 +226,7 @@ export const useAppStore = create<AppStore>((set, get) => ({
     const updated = [...projects, project]
     set({ projects: updated })
     saveProjects(updated)
+    initProjectTemplates(folderPath)
   },
 
   removeProject: (projectId) => {
@@ -349,6 +355,16 @@ export const useAppStore = create<AppStore>((set, get) => ({
       delete updated[tag]
       window.electronAPI.storeSet('tagColors', updated)
       return { tagColors: updated }
+    })
+  },
+
+  // ── Project colors ────────────────────────────────────────────────────────
+  projectColors: {},
+  setProjectColor: (projectId, colorIndex) => {
+    set(s => {
+      const updated = { ...s.projectColors, [projectId]: colorIndex }
+      window.electronAPI.storeSet('projectColors', updated)
+      return { projectColors: updated }
     })
   },
 
