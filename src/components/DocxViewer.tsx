@@ -76,7 +76,7 @@ export default function DocxViewer({ tab }: Props) {
       </div>
 
       {/* DOCX Content */}
-      <div className="flex-1 overflow-auto flex justify-center py-4">
+      <div className="flex-1 overflow-auto">
         {loading ? (
           <div className="flex items-center justify-center h-32">
             <span className="text-sm text-gray-400">로딩 중...</span>
@@ -89,10 +89,12 @@ export default function DocxViewer({ tab }: Props) {
             </div>
           </div>
         ) : (
-          <div
-            className="docx-content bg-white dark:bg-gray-800 shadow-lg rounded-lg px-12 py-10 max-w-4xl w-full mx-4"
-            dangerouslySetInnerHTML={{ __html: html }}
-          />
+          <div className="flex justify-center bg-gray-100 dark:bg-gray-900">
+            <div
+              className="docx-content bg-white dark:bg-gray-800 shadow-lg px-12 py-10 max-w-4xl w-full"
+              dangerouslySetInnerHTML={{ __html: html }}
+            />
+          </div>
         )}
       </div>
 

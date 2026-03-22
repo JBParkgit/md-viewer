@@ -3,6 +3,7 @@ import { join, basename, extname } from 'path'
 import { readdir, readFile, writeFile, stat, mkdir, copyFile } from 'fs/promises'
 import { statSync, existsSync } from 'fs'
 import { execFile } from 'child_process'
+import mammoth from 'mammoth'
 import Store from 'electron-store'
 import chokidar from 'chokidar'
 
@@ -194,6 +195,22 @@ async function searchInDir(dirPath: string, query: string, results: SearchResult
         try {
           const content = await readFile(fullPath, 'utf-8')
           const lines = content.split('\n')
+          const lowerQuery = query.toLowerCase()
+          lines.forEach((line, i) => {
+            if (line.toLowerCase().includes(lowerQuery)) {
+              results.push({
+                filePath: fullPath,
+                fileName: entry.name,
+                lineNumber: i + 1,
+                lineText: line.trim().slice(0, 120),
+              })
+            }
+          })
+        } catch {}
+      } else if (entry.isFile() && /\.docx?$/i.test(entry.name)) {
+        try {
+          const { value } = await mammoth.extractRawText({ path: fullPath })
+          const lines = value.split('\n')
           const lowerQuery = query.toLowerCase()
           lines.forEach((line, i) => {
             if (line.toLowerCase().includes(lowerQuery)) {
