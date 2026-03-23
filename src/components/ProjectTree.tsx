@@ -35,6 +35,8 @@ export default function ProjectTree({ project, projectIndex, searchQuery, onOpen
   const [gitBranch, setGitBranch] = useState<string | null>(null)
   const [gitStatusMap, setGitStatusMap] = useState<GitStatusMap>({})
   const [gitChangedCount, setGitChangedCount] = useState(0)
+  const [hasRemote, setHasRemote] = useState(false)
+  const [isPulling, setIsPulling] = useState(false)
 
   // Multi-selection
   const [selectedPaths, setSelectedPaths] = useState<Set<string>>(new Set())
@@ -147,11 +149,13 @@ export default function ProjectTree({ project, projectIndex, searchQuery, onOpen
     try {
       const isRepo = await window.electronAPI.gitIsRepo(project.path)
       if (!isRepo) { setGitBranch(null); setGitStatusMap({}); setGitChangedCount(0); return }
-      const [branchRes, statusRes] = await Promise.all([
+      const [branchRes, statusRes, remoteRes] = await Promise.all([
         window.electronAPI.gitBranch(project.path),
         window.electronAPI.gitStatus(project.path),
+        window.electronAPI.gitRemoteGet(project.path),
       ])
       setGitBranch(branchRes.success ? branchRes.output || '' : null)
+      setHasRemote(remoteRes.success && !!remoteRes.output?.trim())
       if (statusRes.success && statusRes.output) {
         const map: GitStatusMap = {}
         let count = 0
@@ -177,6 +181,7 @@ export default function ProjectTree({ project, projectIndex, searchQuery, onOpen
       setGitBranch(null)
       setGitStatusMap({})
       setGitChangedCount(0)
+      setHasRemote(false)
     }
   }
 
@@ -231,6 +236,7 @@ export default function ProjectTree({ project, projectIndex, searchQuery, onOpen
   const [allTemplates, setAllTemplates] = useState<MdTemplate[]>([])
   const [savingTemplate, setSavingTemplate] = useState(false)
   const [saveTemplateName, setSaveTemplateName] = useState('')
+  const [templateManageMode, setTemplateManageMode] = useState(false)
 
   const startCreateFile = async (e?: React.MouseEvent) => {
     e?.stopPropagation()
@@ -280,6 +286,7 @@ export default function ProjectTree({ project, projectIndex, searchQuery, onOpen
   const cancelCreateFile = () => {
     setIsCreatingFile(false)
     setShowTemplatePicker(false)
+    setTemplateManageMode(false)
     setNewFileName('')
   }
 
@@ -467,6 +474,50 @@ export default function ProjectTree({ project, projectIndex, searchQuery, onOpen
               <button onClick={startRename} className="w-5 h-5 flex items-center justify-center rounded hover:bg-gray-200 dark:hover:bg-gray-600" title="이름 변경">
                 <svg className="w-3 h-3 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z" /></svg>
               </button>
+              {gitBranch !== null && hasRemote && (
+                <button
+                  onClick={async (e) => {
+                    e.stopPropagation()
+                    setIsPulling(true)
+                    const res = await window.electronAPI.gitPull(project.path)
+                    setIsPulling(false)
+                    if (res.success) {
+                      loadNodes()
+                      loadGitStatus()
+                      setGitActionMsg('Pull 완료')
+                    } else {
+                      setGitActionMsg(res.error || 'Pull 실패')
+                    }
+                    setTimeout(() => setGitActionMsg(null), 3000)
+                  }}
+                  disabled={isPulling}
+                  className="w-5 h-5 flex items-center justify-center rounded hover:bg-blue-100 dark:hover:bg-blue-900/40 hover:text-blue-500 disabled:opacity-50"
+                  title="Pull (원격에서 받기)"
+                >
+                  {isPulling ? (
+                    <div className="w-3 h-3 border border-blue-400 border-t-transparent rounded-full animate-spin" />
+                  ) : (
+                    <svg className="w-3 h-3 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 14l-7 7m0 0l-7-7m7 7V3" />
+                    </svg>
+                  )}
+                </button>
+              )}
+              {gitBranch !== null && hasRemote && (
+                <button
+                  onClick={(e) => {
+                    e.stopPropagation()
+                    useAppStore.getState().setGitSelectedProject(project.path)
+                    useAppStore.getState().setSidebarTab('git')
+                  }}
+                  className="w-5 h-5 flex items-center justify-center rounded hover:bg-green-100 dark:hover:bg-green-900/40 hover:text-green-500"
+                  title="Push — Git 탭으로 이동"
+                >
+                  <svg className="w-3 h-3 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 10l7-7m0 0l7 7m-7-7v18" />
+                  </svg>
+                </button>
+              )}
               <button onClick={(e) => { e.stopPropagation(); loadNodes(); loadGitStatus() }} className="w-5 h-5 flex items-center justify-center rounded hover:bg-gray-200 dark:hover:bg-gray-600" title="새로고침">
                 <svg className="w-3 h-3 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" /></svg>
               </button>
@@ -511,97 +562,184 @@ export default function ProjectTree({ project, projectIndex, searchQuery, onOpen
       {showTemplatePicker && (
         <div className="border-b border-blue-200 dark:border-blue-800 bg-blue-50/50 dark:bg-blue-900/10">
           <div className="px-3 py-1.5 flex items-center justify-between">
-            <span className="text-xs font-medium text-blue-600 dark:text-blue-400">템플릿 선택</span>
-            <div className="flex items-center gap-1">
-              <button
-                onClick={() => setSavingTemplate(!savingTemplate)}
-                className="text-xs text-gray-400 hover:text-blue-500 flex items-center gap-0.5"
-                title="현재 문서를 템플릿으로 저장"
-              >
-                <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
-                </svg>
-                저장
-              </button>
-              <button onClick={() => { setShowTemplatePicker(false); setSavingTemplate(false) }} className="text-gray-400 hover:text-gray-600">
-                <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
-                </svg>
-              </button>
-            </div>
+            {templateManageMode ? (
+              <>
+                <div className="flex items-center gap-1">
+                  <button onClick={() => setTemplateManageMode(false)} className="text-gray-400 hover:text-gray-600" title="뒤로">
+                    <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
+                    </svg>
+                  </button>
+                  <span className="text-xs font-medium text-blue-600 dark:text-blue-400">템플릿 편집</span>
+                </div>
+                <button onClick={() => { setShowTemplatePicker(false); setTemplateManageMode(false) }} className="text-gray-400 hover:text-gray-600">
+                  <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                  </svg>
+                </button>
+              </>
+            ) : (
+              <>
+                <span className="text-xs font-medium text-blue-600 dark:text-blue-400">템플릿 선택</span>
+                <div className="flex items-center gap-1">
+                  <button
+                    onClick={() => { setTemplateManageMode(true); setSavingTemplate(false) }}
+                    className="text-xs text-gray-400 hover:text-blue-500 flex items-center gap-0.5"
+                    title="템플릿 편집"
+                  >
+                    <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
+                    </svg>
+                    관리
+                  </button>
+                  <button
+                    onClick={() => setSavingTemplate(!savingTemplate)}
+                    className="text-xs text-gray-400 hover:text-blue-500 flex items-center gap-0.5"
+                    title="현재 문서를 템플릿으로 저장"
+                  >
+                    <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
+                    </svg>
+                    저장
+                  </button>
+                  <button onClick={() => { setShowTemplatePicker(false); setSavingTemplate(false) }} className="text-gray-400 hover:text-gray-600">
+                    <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                    </svg>
+                  </button>
+                </div>
+              </>
+            )}
           </div>
-          {/* Save current doc as template */}
-          {savingTemplate && (
-            <div className="px-3 pb-2">
-              <div className="flex items-center gap-1">
-                <input
-                  autoFocus
-                  value={saveTemplateName}
-                  onChange={e => setSaveTemplateName(e.target.value)}
-                  onKeyDown={async e => {
-                    if (e.key === 'Enter' && saveTemplateName.trim()) {
-                      const activeTab = useAppStore.getState().tabs.find(t => t.id === useAppStore.getState().activeTabId)
-                      const content = activeTab?.content || `# {{title}}\n\n`
-                      // Replace current title with placeholder
-                      const templateContent = content.replace(/^# .+$/m, '# {{title}}')
-                      await saveAsTemplate(project.path, saveTemplateName.trim(), templateContent)
-                      const custom = await loadCustomTemplates(project.path)
-                      setAllTemplates(custom)
-                      setSaveTemplateName('')
-                      setSavingTemplate(false)
-                    }
-                    if (e.key === 'Escape') { setSavingTemplate(false); setSaveTemplateName('') }
-                  }}
-                  placeholder="템플릿 이름"
-                  className="flex-1 text-xs px-2 py-1 rounded border border-blue-300 dark:border-blue-600 bg-white dark:bg-gray-700 focus:outline-none focus:ring-1 focus:ring-blue-400"
-                />
-              </div>
-              <p className="text-xs text-gray-400 mt-1">현재 열린 문서를 템플릿으로 저장합니다</p>
+
+          {/* ── 관리 모드: 템플릿 파일 목록 ── */}
+          {templateManageMode && (
+            <div className="px-2 pb-2 space-y-0.5 max-h-60 overflow-y-auto">
+              {allTemplates.filter(t => t.filePath).length === 0 && (
+                <p className="text-xs text-gray-400 px-2 py-2">편집 가능한 템플릿이 없습니다.</p>
+              )}
+              {getCategories(allTemplates).map(cat => {
+                const editableTemplates = allTemplates.filter(t => t.category === cat && t.filePath)
+                if (editableTemplates.length === 0) return null
+                return (
+                  <div key={cat}>
+                    <div className="text-xs text-gray-400 px-1 py-0.5">{cat}</div>
+                    {editableTemplates.map(t => (
+                      <div key={t.id} className="flex items-center group/tpl rounded hover:bg-blue-50 dark:hover:bg-blue-900/30 transition-colors">
+                        <button
+                          onClick={() => {
+                            const fileName = t.filePath!.replace(/\\/g, '/').split('/').pop() || ''
+                            onOpenFilePinned(t.filePath!, fileName)
+                            setShowTemplatePicker(false)
+                            setTemplateManageMode(false)
+                          }}
+                          className="flex-1 flex items-center gap-2 px-2 py-1.5 text-xs text-left text-gray-700 dark:text-gray-300"
+                        >
+                          <span>{t.icon}</span>
+                          <span className="flex-1 truncate">{t.name}</span>
+                          <svg className="w-3 h-3 text-gray-300 group-hover/tpl:text-blue-400 flex-shrink-0 transition-colors" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
+                          </svg>
+                        </button>
+                        <button
+                          onClick={async (e) => {
+                            e.stopPropagation()
+                            if (!window.confirm(`"${t.name}" 템플릿을 삭제하시겠습니까?`)) return
+                            await window.electronAPI.deleteFile(t.filePath!)
+                            const updated = await loadCustomTemplates(project.path)
+                            setAllTemplates(updated)
+                          }}
+                          className="w-6 h-6 flex items-center justify-center opacity-0 group-hover/tpl:opacity-100 text-gray-300 hover:text-red-500 transition-all flex-shrink-0"
+                          title="템플릿 삭제"
+                        >
+                          <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+                          </svg>
+                        </button>
+                      </div>
+                    ))}
+                  </div>
+                )
+              })}
             </div>
           )}
-          <div className="px-2 pb-2 space-y-1 max-h-60 overflow-y-auto">
-            {getCategories(allTemplates).map(cat => (
-              <div key={cat}>
-                <div className="text-xs text-gray-400 px-1 py-0.5">{cat}</div>
-                {allTemplates.filter(t => t.category === cat).map(t => (
-                  <div key={t.id} className="flex items-center group/tpl">
-                    <button
-                      onClick={() => {
-                        setSelectedTemplate(t)
-                        setShowTemplatePicker(false)
-                        setSavingTemplate(false)
-                        setIsCreatingFile(true)
-                      }}
-                      className={`flex-1 flex items-center gap-2 px-2 py-1 rounded-l text-xs text-left transition-colors ${
-                        selectedTemplate?.id === t.id
-                          ? 'bg-blue-100 dark:bg-blue-900/40 text-blue-700 dark:text-blue-300'
-                          : 'hover:bg-gray-100 dark:hover:bg-gray-700 text-gray-600 dark:text-gray-400'
-                      }`}
-                    >
-                      <span>{t.icon}</span>
-                      <span className="flex-1 truncate">{t.name}</span>
-                    </button>
-                    {t.filePath && (
-                      <button
-                        onClick={() => {
-                          const fileName = t.filePath!.replace(/\\/g, '/').split('/').pop() || ''
-                          onOpenFilePinned(t.filePath!, fileName)
-                          setShowTemplatePicker(false)
+
+          {/* ── 선택 모드 ── */}
+          {!templateManageMode && (
+            <>
+              {/* Save current doc as template */}
+              {savingTemplate && (
+                <div className="px-3 pb-2">
+                  <div className="flex items-center gap-1">
+                    <input
+                      autoFocus
+                      value={saveTemplateName}
+                      onChange={e => setSaveTemplateName(e.target.value)}
+                      onKeyDown={async e => {
+                        if (e.key === 'Enter' && saveTemplateName.trim()) {
+                          const activeTab = useAppStore.getState().tabs.find(t => t.id === useAppStore.getState().activeTabId)
+                          const content = activeTab?.content || `# {{title}}\n\n`
+                          const templateContent = content.replace(/^# .+$/m, '# {{title}}')
+                          await saveAsTemplate(project.path, saveTemplateName.trim(), templateContent)
+                          const custom = await loadCustomTemplates(project.path)
+                          setAllTemplates(custom)
+                          setSaveTemplateName('')
                           setSavingTemplate(false)
-                        }}
-                        className="w-5 h-5 flex items-center justify-center rounded-r opacity-0 group-hover/tpl:opacity-100 text-gray-400 hover:text-blue-500 transition-all"
-                        title="템플릿 편집"
-                      >
-                        <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
-                        </svg>
-                      </button>
-                    )}
+                        }
+                        if (e.key === 'Escape') { setSavingTemplate(false); setSaveTemplateName('') }
+                      }}
+                      placeholder="템플릿 이름"
+                      className="flex-1 text-xs px-2 py-1 rounded border border-blue-300 dark:border-blue-600 bg-white dark:bg-gray-700 focus:outline-none focus:ring-1 focus:ring-blue-400"
+                    />
+                  </div>
+                  <p className="text-xs text-gray-400 mt-1">현재 열린 문서를 템플릿으로 저장합니다</p>
+                </div>
+              )}
+              <div className="px-2 pb-2 space-y-1 max-h-60 overflow-y-auto">
+                {getCategories(allTemplates).map(cat => (
+                  <div key={cat}>
+                    <div className="text-xs text-gray-400 px-1 py-0.5">{cat}</div>
+                    {allTemplates.filter(t => t.category === cat).map(t => (
+                      <div key={t.id} className="flex items-center group/tpl">
+                        <button
+                          onClick={() => {
+                            setSelectedTemplate(t)
+                            setShowTemplatePicker(false)
+                            setSavingTemplate(false)
+                            setIsCreatingFile(true)
+                          }}
+                          className={`flex-1 flex items-center gap-2 px-2 py-1 rounded-l text-xs text-left transition-colors ${
+                            selectedTemplate?.id === t.id
+                              ? 'bg-blue-100 dark:bg-blue-900/40 text-blue-700 dark:text-blue-300'
+                              : 'hover:bg-gray-100 dark:hover:bg-gray-700 text-gray-600 dark:text-gray-400'
+                          }`}
+                        >
+                          <span>{t.icon}</span>
+                          <span className="flex-1 truncate">{t.name}</span>
+                        </button>
+                        {t.filePath && (
+                          <button
+                            onClick={() => {
+                              const fileName = t.filePath!.replace(/\\/g, '/').split('/').pop() || ''
+                              onOpenFilePinned(t.filePath!, fileName)
+                              setShowTemplatePicker(false)
+                              setSavingTemplate(false)
+                            }}
+                            className="w-5 h-5 flex items-center justify-center rounded-r opacity-0 group-hover/tpl:opacity-100 text-gray-400 hover:text-blue-500 transition-all"
+                            title="템플릿 편집"
+                          >
+                            <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
+                            </svg>
+                          </button>
+                        )}
+                      </div>
+                    ))}
                   </div>
                 ))}
               </div>
-            ))}
-          </div>
+            </>
+          )}
         </div>
       )}
 

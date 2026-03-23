@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from 'react'
+import { useState, useEffect, useRef, useCallback } from 'react'
 import { useAppStore } from '../stores/useAppStore'
 import ProjectTree from './ProjectTree'
 import ImageGallery from './ImageGallery'
@@ -9,6 +9,107 @@ import type { SearchResult } from '../types/electron'
 interface Props {
   onOpenFile: (filePath: string, fileName: string) => void
   onOpenFilePinned: (filePath: string, fileName: string) => void
+}
+
+// ── Kanban project row with git remote + pull ────────────────────────────────
+interface KanbanProjectRowProps {
+  project: { id: string; name: string; path: string }
+  isActive: boolean
+  onClick: () => void
+}
+
+function KanbanProjectRow({ project, isActive, onClick }: KanbanProjectRowProps) {
+  const setSidebarTab = useAppStore(s => s.setSidebarTab)
+  const setGitSelectedProject = useAppStore(s => s.setGitSelectedProject)
+  const [gitBranch, setGitBranch] = useState<string | null>(null)
+  const [hasRemote, setHasRemote] = useState(false)
+  const [isPulling, setIsPulling] = useState(false)
+  const [pullMsg, setPullMsg] = useState<string | null>(null)
+
+  const loadGit = useCallback(async () => {
+    try {
+      const isRepo = await window.electronAPI.gitIsRepo(project.path)
+      if (!isRepo) { setGitBranch(null); setHasRemote(false); return }
+      const [branchRes, remoteRes] = await Promise.all([
+        window.electronAPI.gitBranch(project.path),
+        window.electronAPI.gitRemoteGet(project.path),
+      ])
+      setGitBranch(branchRes.success ? branchRes.output || '' : null)
+      setHasRemote(remoteRes.success && !!remoteRes.output?.trim())
+    } catch {
+      setGitBranch(null); setHasRemote(false)
+    }
+  }, [project.path])
+
+  useEffect(() => { loadGit() }, [loadGit])
+
+  const handlePull = async (e: React.MouseEvent) => {
+    e.stopPropagation()
+    setIsPulling(true)
+    const res = await window.electronAPI.gitPull(project.path)
+    setIsPulling(false)
+    setPullMsg(res.success ? '완료' : '실패')
+    setTimeout(() => setPullMsg(null), 2500)
+  }
+
+  const goToGit = (e: React.MouseEvent) => {
+    e.stopPropagation()
+    setGitSelectedProject(project.path)
+    setSidebarTab('git')
+  }
+
+  return (
+    <div
+      className={`w-full flex items-center gap-1.5 px-2 py-2 rounded-lg text-xs transition-colors cursor-pointer ${
+        isActive
+          ? 'bg-blue-50 dark:bg-blue-900/30 text-blue-600 dark:text-blue-400'
+          : 'hover:bg-gray-100 dark:hover:bg-gray-700 text-gray-600 dark:text-gray-400'
+      }`}
+      onClick={onClick}
+    >
+      <svg className="w-4 h-4 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.7} d="M3 7a2 2 0 012-2h4l2 2h8a2 2 0 012 2v9a2 2 0 01-2 2H5a2 2 0 01-2-2V7z" />
+      </svg>
+      <span className="flex-1 truncate">{project.name}</span>
+      {gitBranch !== null && (
+        <span className="px-1 rounded text-[9px] bg-purple-100 dark:bg-purple-900/40 text-purple-600 dark:text-purple-300 font-mono flex-shrink-0">
+          {gitBranch || 'HEAD'}
+        </span>
+      )}
+      {pullMsg && (
+        <span className={`text-[9px] flex-shrink-0 ${pullMsg === '완료' ? 'text-green-500' : 'text-red-500'}`}>
+          {pullMsg}
+        </span>
+      )}
+      {gitBranch !== null && hasRemote && (
+        <>
+          <button
+            onClick={handlePull}
+            disabled={isPulling}
+            className="w-4 h-4 flex items-center justify-center rounded hover:bg-blue-200 dark:hover:bg-blue-800 text-gray-400 hover:text-blue-500 disabled:opacity-50 flex-shrink-0 transition-colors"
+            title="Pull"
+          >
+            {isPulling ? (
+              <div className="w-2.5 h-2.5 border border-blue-400 border-t-transparent rounded-full animate-spin" />
+            ) : (
+              <svg className="w-2.5 h-2.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M19 14l-7 7m0 0l-7-7m7 7V3" />
+              </svg>
+            )}
+          </button>
+          <button
+            onClick={goToGit}
+            className="w-4 h-4 flex items-center justify-center rounded hover:bg-green-200 dark:hover:bg-green-800 text-gray-400 hover:text-green-500 flex-shrink-0 transition-colors"
+            title="Push — Git 탭으로 이동"
+          >
+            <svg className="w-2.5 h-2.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M5 10l7-7m0 0l7 7m-7-7v18" />
+            </svg>
+          </button>
+        </>
+      )}
+    </div>
+  )
 }
 
 // Tab definitions with icons
@@ -465,20 +566,12 @@ export default function Sidebar({ onOpenFile, onOpenFilePinned }: Props) {
                 projects.map(p => {
                   const kanbanProject = useAppStore.getState().kanbanProjectPath
                   return (
-                    <button
+                    <KanbanProjectRow
                       key={p.id}
+                      project={p}
+                      isActive={kanbanProject === p.path}
                       onClick={() => useAppStore.getState().setKanbanProjectPath(p.path)}
-                      className={`w-full flex items-center gap-2 px-2 py-2 rounded-lg text-xs transition-colors ${
-                        kanbanProject === p.path
-                          ? 'bg-blue-50 dark:bg-blue-900/30 text-blue-600 dark:text-blue-400'
-                          : 'hover:bg-gray-100 dark:hover:bg-gray-700 text-gray-600 dark:text-gray-400'
-                      }`}
-                    >
-                      <svg className="w-4 h-4 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.7} d="M3 7a2 2 0 012-2h4l2 2h8a2 2 0 012 2v9a2 2 0 01-2 2H5a2 2 0 01-2-2V7z" />
-                      </svg>
-                      <span className="truncate">{p.name}</span>
-                    </button>
+                    />
                   )
                 })
               )}

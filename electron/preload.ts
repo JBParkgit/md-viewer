@@ -33,6 +33,7 @@ contextBridge.exposeInMainWorld('electronAPI', {
   move: (srcPath: string, destDir: string) => ipcRenderer.invoke('fs:move', srcPath, destDir),
   createDir: (dirPath: string) => ipcRenderer.invoke('fs:createDir', dirPath),
   saveFolder: () => ipcRenderer.invoke('dialog:saveFolder'),
+  cloneFolder: () => ipcRenderer.invoke('dialog:cloneFolder'),
   showItemInFolder: (path: string) => ipcRenderer.invoke('shell:showItemInFolder', path),
   openPath: (path: string) => ipcRenderer.invoke('shell:openPath', path),
   startDrag: (filePath: string) => ipcRenderer.send('native:startDrag', filePath),
@@ -58,6 +59,7 @@ contextBridge.exposeInMainWorld('electronAPI', {
   gitRevert: (cwd: string, hash: string) => ipcRenderer.invoke('git:revert', cwd, hash),
   gitRemoteAdd: (cwd: string, url: string) => ipcRenderer.invoke('git:remoteAdd', cwd, url),
   gitRemoteGet: (cwd: string) => ipcRenderer.invoke('git:remoteGet', cwd),
+  gitAhead: (cwd: string) => ipcRenderer.invoke('git:ahead', cwd),
   gitConfig: (cwd: string) => ipcRenderer.invoke('git:config', cwd),
 
   // App close

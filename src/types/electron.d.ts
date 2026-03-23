@@ -36,6 +36,7 @@ export interface ElectronAPI {
   move: (srcPath: string, destDir: string) => Promise<{ success: boolean; newPath?: string; error?: string }>
   createDir: (dirPath: string) => Promise<{ success: boolean; error?: string }>
   saveFolder: () => Promise<string | null>
+  cloneFolder: () => Promise<string | null>
   getPathForFile: (file: File) => string
   showItemInFolder: (path: string) => Promise<void>
   openPath: (path: string) => Promise<string | null>
@@ -58,6 +59,7 @@ export interface ElectronAPI {
   gitRevert: (cwd: string, hash: string) => Promise<{ success: boolean; output?: string; error?: string }>
   gitRemoteAdd: (cwd: string, url: string) => Promise<{ success: boolean; output?: string; error?: string }>
   gitRemoteGet: (cwd: string) => Promise<{ success: boolean; output?: string; error?: string }>
+  gitAhead: (cwd: string) => Promise<{ success: boolean; output?: string; error?: string }>
   gitConfig: (cwd: string) => Promise<{ success: boolean; output?: string; error?: string }>
 
   onBeforeClose: (cb: () => void) => () => void

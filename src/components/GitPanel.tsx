@@ -78,6 +78,7 @@ export default function GitPanel() {
   const [commitMsg, setCommitMsg] = useState('')
   const [loading, setLoading] = useState(false)
   const [actionMsg, setActionMsg] = useState<{ text: string; type: 'success' | 'error' } | null>(null)
+  const [aheadCount, setAheadCount] = useState(0)
   const [remoteUrl, setRemoteUrl] = useState('')
   const [showRemoteInput, setShowRemoteInput] = useState(false)
   const [remoteInputValue, setRemoteInputValue] = useState('')
@@ -122,10 +123,14 @@ export default function GitPanel() {
         window.electronAPI.gitLog(selectedProjectPath),
         window.electronAPI.gitRemoteGet(selectedProjectPath),
       ])
-      setBranch(branchRes.success ? branchRes.output || '' : '')
+      const currentBranch = branchRes.success ? branchRes.output || '' : ''
+      setBranch(currentBranch)
       setFiles(statusRes.success ? parseStatus(statusRes.output || '') : [])
       setLogs(logRes.success ? parseLog(logRes.output || '') : [])
       setRemoteUrl(remoteRes.success ? remoteRes.output || '' : '')
+      // Count commits ahead of upstream (not yet pushed)
+      const aheadRes = await window.electronAPI.gitAhead(selectedProjectPath)
+      setAheadCount(aheadRes.success ? parseInt(aheadRes.output?.trim() || '0', 10) : 0)
     } catch {}
     setLoading(false)
   }, [selectedProjectPath])
@@ -166,7 +171,7 @@ export default function GitPanel() {
 
   const handleClone = async () => {
     if (!cloneUrl.trim()) return
-    const destParent = await window.electronAPI.saveFolder()
+    const destParent = await window.electronAPI.cloneFolder()
     if (!destParent) return
     // Extract repo name from URL
     const repoName = cloneUrl.trim().replace(/\.git$/, '').split('/').pop() || 'repo'
@@ -308,43 +313,38 @@ export default function GitPanel() {
     </div>
   )
 
-  if (projects.length === 0) {
-    return (
-      <div className="flex flex-col items-center justify-center gap-3 py-8 px-4 text-xs">
-        <svg className="w-10 h-10 text-gray-300 dark:text-gray-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M3 7a2 2 0 012-2h4l2 2h8a2 2 0 012 2v9a2 2 0 01-2 2H5a2 2 0 01-2-2V7z" />
-        </svg>
-        <span className="text-gray-400">프로젝트를 먼저 추가하세요</span>
-        <button
-          onClick={() => setShowCloneInput(true)}
-          className="flex items-center gap-1.5 px-3 py-1.5 rounded-md bg-green-600 hover:bg-green-700 text-white transition-colors"
-        >
-          <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" />
-          </svg>
-          저장소 Clone
-        </button>
-        {cloneInputUI}
-      </div>
-    )
-  }
-
   return (
     <div className="flex flex-col h-full text-xs">
-      {/* Project selector */}
-      {projects.length > 1 && (
-        <div className="px-2 py-1.5 border-b border-gray-200 dark:border-gray-700">
+      {/* Project selector + Clone button */}
+      <div className="px-2 py-1.5 border-b border-gray-200 dark:border-gray-700 flex items-center gap-1.5">
+        {projects.length > 0 ? (
           <select
             value={selectedProjectPath || ''}
             onChange={e => setSelectedProjectPath(e.target.value)}
-            className="w-full text-xs px-1.5 py-1 rounded border border-gray-200 dark:border-gray-600 bg-white dark:bg-gray-700 focus:outline-none"
+            className="flex-1 min-w-0 text-xs px-1.5 py-1 rounded border border-gray-200 dark:border-gray-600 bg-white dark:bg-gray-700 focus:outline-none"
           >
             {projects.map(p => (
               <option key={p.path} value={p.path}>{p.name}</option>
             ))}
           </select>
-        </div>
-      )}
+        ) : (
+          <span className="flex-1 text-xs text-gray-400">프로젝트 없음</span>
+        )}
+        <button
+          onClick={() => setShowCloneInput(v => !v)}
+          className={`flex items-center gap-1 px-2 py-1 rounded text-xs font-medium transition-colors flex-shrink-0 ${
+            showCloneInput
+              ? 'bg-green-600 text-white'
+              : 'bg-green-50 dark:bg-green-900/30 text-green-700 dark:text-green-400 hover:bg-green-100 dark:hover:bg-green-900/50 border border-green-200 dark:border-green-800'
+          }`}
+          title="원격 저장소 Clone"
+        >
+          <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" />
+          </svg>
+          Clone
+        </button>
+      </div>
 
       {/* Action message */}
       {actionMsg && (
@@ -355,6 +355,16 @@ export default function GitPanel() {
 
       {/* Clone input (shared) */}
       {cloneInputUI}
+
+      {/* No projects */}
+      {projects.length === 0 && !showCloneInput && (
+        <div className="flex flex-col items-center justify-center gap-2 py-8 px-4">
+          <svg className="w-10 h-10 text-gray-300 dark:text-gray-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M3 7a2 2 0 012-2h4l2 2h8a2 2 0 012 2v9a2 2 0 01-2 2H5a2 2 0 01-2-2V7z" />
+          </svg>
+          <p className="text-xs text-gray-400 text-center">프로젝트를 추가하거나<br/>Clone으로 저장소를 받아오세요</p>
+        </div>
+      )}
 
       {/* Not a repo */}
       {!isRepo && selectedProjectPath && !showCloneInput && (
@@ -369,15 +379,6 @@ export default function GitPanel() {
           >
             Git 저장소 초기화
           </button>
-          <button
-            onClick={() => setShowCloneInput(true)}
-            className="flex items-center gap-1.5 px-3 py-1.5 text-xs rounded-md bg-green-600 hover:bg-green-700 text-white transition-colors"
-          >
-            <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" />
-            </svg>
-            저장소 Clone
-          </button>
         </div>
       )}
 
@@ -391,13 +392,13 @@ export default function GitPanel() {
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M7 7h.01M7 3h5c.512 0 1.024.195 1.414.586l7 7a2 2 0 010 2.828l-7 7a2 2 0 01-2.828 0l-7-7A2 2 0 013 12V7a4 4 0 014-4z" />
               </svg>
               <span className="font-medium text-purple-600 dark:text-purple-400">{branch || '(no branch)'}</span>
+              {aheadCount > 0 && (
+                <span className="px-1.5 py-0.5 rounded-full bg-orange-500 text-white text-[10px] font-bold leading-none" title={`${aheadCount}개의 커밋이 아직 푸시되지 않았습니다`}>
+                  {aheadCount}
+                </span>
+              )}
               {loading && <div className="w-3 h-3 border border-gray-400 border-t-transparent rounded-full animate-spin" />}
               <div className="flex-1" />
-              <button onClick={() => setShowCloneInput(v => !v)} className="p-1 rounded hover:bg-gray-200 dark:hover:bg-gray-600" title="저장소 Clone">
-                <svg className="w-3.5 h-3.5 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" />
-                </svg>
-              </button>
               <button onClick={refresh} className="p-1 rounded hover:bg-gray-200 dark:hover:bg-gray-600" title="새로고침">
                 <svg className="w-3.5 h-3.5 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
@@ -426,6 +427,11 @@ export default function GitPanel() {
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 10l7-7m0 0l7 7m-7-7v18" />
                 </svg>
                 올리기 (Push)
+                {aheadCount > 0 && (
+                  <span className="ml-0.5 px-1.5 py-0.5 rounded-full bg-white/30 text-white text-[10px] font-bold leading-none">
+                    {aheadCount}
+                  </span>
+                )}
               </button>
             </div>
             {/* Remote URL */}

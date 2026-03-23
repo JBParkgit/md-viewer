@@ -577,6 +577,18 @@ ipcMain.handle('dialog:saveFolder', async () => {
   return result.filePaths[0]
 })
 
+// ── IPC: Clone folder dialog (starts at home directory) ─────────────────────
+ipcMain.handle('dialog:cloneFolder', async () => {
+  if (!mainWindow) return null
+  const result = await dialog.showOpenDialog(mainWindow, {
+    properties: ['openDirectory', 'createDirectory'],
+    title: '저장소를 Clone할 상위 폴더 선택',
+    defaultPath: app.getPath('home'),
+  })
+  if (result.canceled || result.filePaths.length === 0) return null
+  return result.filePaths[0]
+})
+
 // ── IPC: Git Operations ─────────────────────────────────────────────────────
 function gitExec(args: string[], cwd: string): Promise<{ success: boolean; output?: string; error?: string }> {
   return new Promise((resolve) => {
@@ -632,7 +644,17 @@ ipcMain.handle('git:discard', async (_e, cwd: string, file: string) => {
 })
 
 ipcMain.handle('git:commit', async (_e, cwd: string, message: string) => {
-  return gitExec(['commit', '-m', message], cwd)
+  // Use shell: false to pass the message directly without shell interpretation
+  // This prevents special characters (commas, quotes, etc.) from being mishandled
+  return new Promise((resolve) => {
+    execFile('git', ['commit', '-m', message], { cwd, timeout: 30000 }, (err, stdout, stderr) => {
+      if (err) {
+        resolve({ success: false, error: stderr.trim() || err.message })
+      } else {
+        resolve({ success: true, output: stdout.trimEnd() })
+      }
+    })
+  })
 })
 
 ipcMain.handle('git:log', async (_e, cwd: string) => {
@@ -644,7 +666,7 @@ ipcMain.handle('git:pull', async (_e, cwd: string) => {
 })
 
 ipcMain.handle('git:push', async (_e, cwd: string) => {
-  // Check if there are any commits
+  // Check if there are any commits at all
   const logCheck = await gitExec(['rev-parse', 'HEAD'], cwd)
   if (!logCheck.success) {
     return { success: false, error: '커밋이 없습니다. 먼저 커밋을 생성하세요.' }
@@ -652,8 +674,21 @@ ipcMain.handle('git:push', async (_e, cwd: string) => {
   // Get current branch
   const branchRes = await gitExec(['branch', '--show-current'], cwd)
   const branch = branchRes.output?.trim() || 'master'
-  // Always push with -u to handle first push automatically
-  return gitExec(['push', '-u', 'origin', branch], cwd)
+  // Push and capture both stdout+stderr to detect "Everything up-to-date"
+  return new Promise((resolve) => {
+    execFile('git', ['push', '-u', 'origin', branch], { cwd, timeout: 30000, shell: true }, (err, stdout, stderr) => {
+      if (err) {
+        resolve({ success: false, error: stderr.trim() || err.message })
+      } else {
+        const combined = (stdout + stderr).toLowerCase()
+        if (combined.includes('everything up-to-date') || combined.includes('up to date')) {
+          resolve({ success: false, error: '올릴 커밋이 없습니다. 변경사항을 먼저 커밋하세요.' })
+        } else {
+          resolve({ success: true, output: stdout.trimEnd() || stderr.trimEnd() })
+        }
+      }
+    })
+  })
 })
 
 ipcMain.handle('git:revert', async (_e, cwd: string, hash: string) => {
@@ -662,6 +697,16 @@ ipcMain.handle('git:revert', async (_e, cwd: string, hash: string) => {
 
 ipcMain.handle('git:remoteAdd', async (_e, cwd: string, url: string) => {
   return gitExec(['remote', 'add', 'origin', url], cwd)
+})
+
+ipcMain.handle('git:ahead', async (_e, cwd: string) => {
+  // Use @{u} (upstream) notation without shell so it's interpreted by git, not cmd.exe
+  return new Promise((resolve) => {
+    execFile('git', ['rev-list', '--count', '@{u}..HEAD'], { cwd, timeout: 10000 }, (err, stdout, stderr) => {
+      if (err) resolve({ success: false, error: stderr.trim() || err.message })
+      else resolve({ success: true, output: stdout.trim() })
+    })
+  })
 })
 
 ipcMain.handle('git:remoteGet', async (_e, cwd: string) => {
