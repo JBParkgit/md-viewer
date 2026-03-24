@@ -1,7 +1,6 @@
 import { useRef, useEffect, useState, useCallback, useMemo } from 'react'
 import ReactMarkdown from 'react-markdown'
 import remarkGfm from 'remark-gfm'
-import rehypeSanitize from 'rehype-sanitize'
 import { Prism as SyntaxHighlighter } from 'react-syntax-highlighter'
 import { oneLight, oneDark } from 'react-syntax-highlighter/dist/esm/styles/prism'
 import { useAppStore, type Tab } from '../stores/useAppStore'
@@ -32,11 +31,36 @@ function TagBadges({ tags }: { tags: string[] }) {
 }
 
 export default function MarkdownView({ tab, scrollRef, lineNumbers }: Props) {
-  const { darkMode, setTabScrollPos } = useAppStore()
+  const { darkMode, setTabScrollPos, projects, openTab } = useAppStore()
   const isDark = darkMode === 'dark' ||
     (darkMode === 'system' && document.documentElement.classList.contains('dark'))
   const containerRef = useRef<HTMLDivElement>(null)
   const [modalImage, setModalImage] = useState<string | null>(null)
+  const [wikiNotFound, setWikiNotFound] = useState<string | null>(null)
+
+  const handleWikiLink = useCallback(async (name: string) => {
+    for (const p of projects) {
+      const found = await window.electronAPI.findFile(p.path, name)
+      if (found) {
+        const result = await window.electronAPI.readFile(found)
+        if (result.success && result.content !== undefined) {
+          const fileName = found.replace(/\\/g, '/').split('/').pop() || found
+          const alreadyOpen = useAppStore.getState().tabs.find(t => t.filePath === found)
+          openTab(found, fileName, result.content, 'md', !alreadyOpen)
+          return
+        }
+      }
+    }
+    setWikiNotFound(name)
+    setTimeout(() => setWikiNotFound(null), 3000)
+  }, [projects, openTab])
+
+  // Preprocess [[wikilinks]] → [label](docuflow://target)
+  const processedContent = useMemo(() =>
+    stripFrontmatter(tab.content).replace(
+      /\[\[([^\]|]+)(?:\|([^\]]+))?\]\]/g,
+      (_, target, label) => `[${label || target}](docuflow://${encodeURIComponent(target.trim())})`
+    ), [tab.content])
 
   // Wire up external scroll ref
   useEffect(() => {
@@ -118,10 +142,15 @@ export default function MarkdownView({ tab, scrollRef, lineNumbers }: Props) {
         {parseFrontmatterTags(tab.content).length > 0 && (
           <TagBadges tags={parseFrontmatterTags(tab.content)} />
         )}
+        {wikiNotFound && (
+          <div className="mb-3 px-3 py-2 rounded-md bg-orange-50 dark:bg-orange-900/30 text-orange-700 dark:text-orange-300 text-xs">
+            문서를 찾을 수 없습니다: <strong>{wikiNotFound}</strong>
+          </div>
+        )}
         <div ref={markdownBodyRef} className="markdown-body text-gray-900 dark:text-gray-100">
           <ReactMarkdown
             remarkPlugins={[remarkGfm]}
-            rehypePlugins={[rehypeSanitize]}
+            urlTransform={(url) => url}
             components={{
               code({ className, children, ...props }) {
                 const match = /language-(\w+)/.exec(className || '')
@@ -157,6 +186,35 @@ export default function MarkdownView({ tab, scrollRef, lineNumbers }: Props) {
                 )
               },
               a({ href, children, ...props }) {
+                if (href?.startsWith('docuflow://')) {
+                  const name = decodeURIComponent(href.slice(11))
+                  return (
+                    <span
+                      className="wikilink cursor-pointer text-purple-600 dark:text-purple-400 hover:underline font-medium"
+                      onClick={() => handleWikiLink(name)}
+                      title={`문서 열기: ${name}`}
+                    >
+                      {children}
+                    </span>
+                  )
+                }
+                // Local .md file link → open as document
+                if (href && !href.startsWith('http') && !href.startsWith('mailto') &&
+                    !href.startsWith('#') && !href.startsWith('data:') && !href.startsWith('file://')) {
+                  const fileName = href.split(/[/\\]/).pop() || href
+                  const ext = fileName.split('.').pop()?.toLowerCase()
+                  if (!ext || ext === 'md') {
+                    return (
+                      <span
+                        className="cursor-pointer text-blue-600 dark:text-blue-400 hover:underline"
+                        onClick={() => handleWikiLink(fileName.replace(/\.md$/i, '') || fileName)}
+                        title={`문서 열기: ${fileName}`}
+                      >
+                        {children}
+                      </span>
+                    )
+                  }
+                }
                 return (
                   <a
                     href={href}
@@ -172,7 +230,7 @@ export default function MarkdownView({ tab, scrollRef, lineNumbers }: Props) {
               },
             }}
           >
-            {stripFrontmatter(tab.content)}
+            {processedContent}
           </ReactMarkdown>
         </div>
       </div>

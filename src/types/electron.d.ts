@@ -30,6 +30,9 @@ export interface ElectronAPI {
   listImages: (dirPath: string) => Promise<string[]>
   listVideos: (dirPath: string) => Promise<string[]>
   collectTags: (dirPath: string) => Promise<{ filePath: string; fileName: string; tags: string[] }[]>
+  collectLinks: (dirPath: string) => Promise<{ filePath: string; fileName: string; targets: string[] }[]>
+  findFile: (dirPath: string, name: string) => Promise<string | null>
+  listMdFiles: (dirPath: string) => Promise<string[]>
   createFile: (filePath: string, content?: string) => Promise<{ success: boolean; error?: string }>
   renameFile: (oldPath: string, newName: string) => Promise<{ success: boolean; newPath?: string; error?: string }>
   deleteFile: (filePath: string) => Promise<{ success: boolean; error?: string }>

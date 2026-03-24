@@ -110,6 +110,8 @@ interface AppStore {
   setFontFamily: (font: string) => void
   showTOC: boolean
   setShowTOC: (show: boolean) => void
+  rightPanelTab: 'toc' | 'links' | 'backlinks' | 'related'
+  setRightPanelTab: (tab: 'toc' | 'links' | 'backlinks' | 'related') => void
 }
 
 let tabCounter = 0
@@ -403,4 +405,7 @@ export const useAppStore = create<AppStore>((set, get) => ({
 
   showTOC: true,
   setShowTOC: (show) => set({ showTOC: show }),
+
+  rightPanelTab: 'toc',
+  setRightPanelTab: (tab) => set({ rightPanelTab: tab }),
 }))

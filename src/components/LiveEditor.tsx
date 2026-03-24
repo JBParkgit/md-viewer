@@ -4,6 +4,7 @@ import { markdown, markdownLanguage } from '@codemirror/lang-markdown'
 import { languages } from '@codemirror/language-data'
 import { oneDark } from '@codemirror/theme-one-dark'
 import { indentWithTab } from '@codemirror/commands'
+import { autocompletion, type CompletionContext } from '@codemirror/autocomplete'
 import { useAppStore, type Tab } from '../stores/useAppStore'
 
 interface Props {
@@ -12,6 +13,7 @@ interface Props {
   onChange: (content: string) => void
   editorViewRef?: MutableRefObject<EditorView | null>
   onScroll?: () => void
+  mdFiles?: { name: string; path: string }[]
 }
 
 // Light theme for CodeMirror
@@ -81,12 +83,14 @@ const darkTheme = EditorView.theme({
   },
 }, { dark: true })
 
-export default function LiveEditor({ tab, onSave, onChange, editorViewRef, onScroll }: Props) {
+export default function LiveEditor({ tab, onSave, onChange, editorViewRef, onScroll, mdFiles = [] }: Props) {
   const { darkMode, fontSize, projects } = useAppStore()
   const isDark = darkMode === 'dark' ||
     (darkMode === 'system' && document.documentElement.classList.contains('dark'))
   const cmRef = useRef<ReactCodeMirrorRef>(null)
   const containerRef = useRef<HTMLDivElement>(null)
+  const mdFilesRef = useRef(mdFiles)
+  mdFilesRef.current = mdFiles
 
   // ── Helper: wrap selection with inline markers ─────────────────────────
   const wrapSelection = useCallback((view: EditorView, before: string, after: string) => {
@@ -216,11 +220,11 @@ export default function LiveEditor({ tab, onSave, onChange, editorViewRef, onScr
       const dt = e.dataTransfer
       if (!dt) return
       const hasFiles = dt.types.includes('Files')
-      const hasTreePath = dt.types.includes('application/x-filepath')
+      const hasTreePath = dt.types.includes('application/x-filepath') || dt.types.includes('application/x-filepaths')
       if (hasFiles || hasTreePath) {
         e.preventDefault()
         e.stopPropagation()
-        dt.dropEffect = hasTreePath ? 'move' : 'copy'
+        dt.dropEffect = hasTreePath ? 'copy' : 'copy'
       }
     }
 
@@ -251,44 +255,71 @@ export default function LiveEditor({ tab, onSave, onChange, editorViewRef, onScr
 
       const pos = v.posAtCoords({ x: e.clientX, y: e.clientY }) ?? v.state.selection.main.head
 
-      // ── Tree drag (application/x-filepath) ──
-      const treePath = dt.getData('application/x-filepath')
-      if (treePath) {
-        const ext = treePath.split('.').pop()?.toLowerCase() ?? ''
+      // ── Helper: build markdown text for a single file path ──
+      const filePathToMarkdown = (fp: string): string => {
+        const fileName = fp.replace(/\\/g, '/').split('/').pop() || ''
+        const ext = fileName.split('.').pop()?.toLowerCase() ?? ''
         if (IMAGE_DROP_EXTS.includes(ext)) {
-          const fileName = treePath.replace(/\\/g, '/').split('/').pop() || ''
-          const relativePath = computeRelativePath(treePath)
-          const text = `![${fileName}](${relativePath})\n`
-          v.dispatch({ changes: { from: pos, insert: text }, selection: { anchor: pos + text.length } })
+          return `![${fileName}](${computeRelativePath(fp)})`
         }
+        if (ext === 'md') {
+          return `[[${fileName.replace(/\.md$/i, '')}]]`
+        }
+        return `[${fileName}](${computeRelativePath(fp)})`
+      }
+
+      // ── Tree drag (application/x-filepaths or application/x-filepath) ──
+      const multiData = dt.getData('application/x-filepaths')
+      const treePaths: string[] = multiData ? (() => { try { return JSON.parse(multiData) } catch { return [] } })() : []
+      const singleTreePath = dt.getData('application/x-filepath')
+      if (treePaths.length === 0 && singleTreePath) treePaths.push(singleTreePath)
+
+      if (treePaths.length > 0) {
+        const insertions = treePaths.map(fp => filePathToMarkdown(fp))
+        const text = insertions.join('\n') + '\n'
+        v.dispatch({ changes: { from: pos, insert: text }, selection: { anchor: pos + text.length } })
         return
       }
 
       // ── OS file drag ──
       const files = Array.from(dt.files)
-      const imageFiles = files.filter(f => {
-        const ext = f.name.split('.').pop()?.toLowerCase() ?? ''
-        return IMAGE_DROP_EXTS.includes(ext)
-      })
-      if (imageFiles.length > 0) {
-        const projectRoot = getProjectRootRef.current()
-        ;(async () => {
-          const insertions: string[] = []
-          for (const file of imageFiles) {
-            const filePath = window.electronAPI.getPathForFile(file)
-            if (!filePath) continue
-            const result = await window.electronAPI.copyImageToDir(filePath, projectRoot)
-            if (result.success && result.fileName) {
-              const relPath = computeRelativePath(projectRoot.replace(/\\/g, '/') + '/images/' + result.fileName)
-              insertions.push(`![${result.fileName}](${relPath})`)
-            }
+      if (files.length === 0) return
+
+      const projectRoot = getProjectRootRef.current()
+      const imageFiles = files.filter(f => IMAGE_DROP_EXTS.includes(f.name.split('.').pop()?.toLowerCase() ?? ''))
+      const otherFiles = files.filter(f => !IMAGE_DROP_EXTS.includes(f.name.split('.').pop()?.toLowerCase() ?? ''))
+
+      ;(async () => {
+        const insertions: string[] = []
+
+        // Images: copy to images/ and insert
+        for (const file of imageFiles) {
+          const filePath = window.electronAPI.getPathForFile(file)
+          if (!filePath) continue
+          const result = await window.electronAPI.copyImageToDir(filePath, projectRoot)
+          if (result.success && result.fileName) {
+            const relPath = computeRelativePath(projectRoot.replace(/\\/g, '/') + '/images/' + result.fileName)
+            insertions.push(`![${result.fileName}](${relPath})`)
           }
-          if (insertions.length > 0) {
-            const text = insertions.join('\n') + '\n'
-            v.dispatch({ changes: { from: pos, insert: text }, selection: { anchor: pos + text.length } })
+        }
+
+        // Other files: insert as links in-place
+        for (const file of otherFiles) {
+          const filePath = window.electronAPI.getPathForFile(file)
+          if (!filePath) continue
+          const ext = file.name.split('.').pop()?.toLowerCase() ?? ''
+          if (ext === 'md') {
+            insertions.push(`[[${file.name.replace(/\.md$/i, '')}]]`)
+          } else {
+            insertions.push(`[${file.name}](${computeRelativePath(filePath)})`)
           }
-        })()
-      }
+        }
+
+        if (insertions.length > 0) {
+          const text = insertions.join('\n') + '\n'
+          v.dispatch({ changes: { from: pos, insert: text }, selection: { anchor: pos + text.length } })
+        }
+      })()
     }
 
     dragOverHandler.current = handleDragOver
@@ -317,6 +348,27 @@ export default function LiveEditor({ tab, onSave, onChange, editorViewRef, onScr
     return text
   }), [])
 
+  const wikiLinkCompletion = useMemo(() =>
+    autocompletion({
+      override: [(context: CompletionContext) => {
+        const word = context.matchBefore(/\[\[[^\]]*/u)
+        if (!word) return null
+        const typed = word.text.slice(2)
+        const files = mdFilesRef.current
+        if (files.length === 0) return null
+        const options = files
+          .map(f => {
+            const label = f.name.replace(/\.md$/i, '')
+            return { label, apply: label + ']]', type: 'file' as const }
+          })
+          .filter(o => o.label.toLowerCase().includes(typed.toLowerCase()))
+        if (options.length === 0) return null
+        return { from: word.from + 2, options }
+      }],
+      defaultKeymap: true,
+    })
+  , [])
+
   const extensions = useMemo(() => [
     markdown({
       base: markdownLanguage,
@@ -326,8 +378,9 @@ export default function LiveEditor({ tab, onSave, onChange, editorViewRef, onScr
     keymap.of([indentWithTab]),
     saveKeymap,
     pasteHandler,
+    wikiLinkCompletion,
     isDark ? darkTheme : lightTheme,
-  ], [isDark, saveKeymap, pasteHandler])
+  ], [isDark, saveKeymap, pasteHandler, wikiLinkCompletion])
 
   const handleChange = useCallback((value: string) => {
     if (tab.isPreview) {
@@ -381,7 +434,7 @@ export default function LiveEditor({ tab, onSave, onChange, editorViewRef, onScr
           syntaxHighlighting: true,
           bracketMatching: true,
           closeBrackets: true,
-          autocompletion: false,
+          autocompletion: false, // handled by wikiLinkCompletion extension
           rectangularSelection: true,
           crosshairCursor: false,
           highlightActiveLine: true,

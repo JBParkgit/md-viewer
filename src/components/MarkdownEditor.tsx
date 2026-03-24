@@ -1,11 +1,11 @@
-import { useCallback, useEffect, useRef, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { EditorView } from '@uiw/react-codemirror'
 import { useAppStore, type Tab } from '../stores/useAppStore'
 import { markRecentlySaved } from '../utils/recentSave'
 import { parseFrontmatterTags, updateFrontmatterTags } from '../utils/frontmatter'
 import MarkdownView from './MarkdownView'
 import LiveEditor from './LiveEditor'
-import TableOfContents from './TableOfContents'
+import RightPanel from './RightPanel'
 import TableEditor from './TableEditor'
 import FloatingToolbar from './FloatingToolbar'
 
@@ -22,7 +22,24 @@ export default function MarkdownEditor({ tab }: Props) {
     markTabSaved,
     setTabFileChanged,
     showTOC,
+    projects,
   } = useAppStore()
+
+  const projectPath = useMemo(() =>
+    projects.find(p => tab.filePath.startsWith(p.path))?.path || '',
+    [projects, tab.filePath]
+  )
+
+  const [mdFiles, setMdFiles] = useState<{ name: string; path: string }[]>([])
+  useEffect(() => {
+    if (!projectPath) { setMdFiles([]); return }
+    window.electronAPI.listMdFiles(projectPath).then(files => {
+      setMdFiles(files.map(fp => ({
+        name: fp.replace(/\\/g, '/').split('/').pop() || fp,
+        path: fp,
+      })))
+    }).catch(() => {})
+  }, [projectPath])
 
   const [saveError, setSaveError] = useState<string | null>(null)
   const [saveSuccess, setSaveSuccess] = useState(false)
@@ -211,7 +228,13 @@ export default function MarkdownEditor({ tab }: Props) {
             <div className="flex-1 overflow-hidden">
               <MarkdownView tab={tab} />
             </div>
-            {showTOC && <TableOfContents content={tab.content} />}
+            {showTOC && (
+              <RightPanel
+                content={tab.content}
+                filePath={tab.filePath}
+                projectPath={projectPath}
+              />
+            )}
           </>
         )}
 
@@ -221,6 +244,7 @@ export default function MarkdownEditor({ tab }: Props) {
             onSave={handleSave}
             onChange={(content) => useAppStore.getState().updateTabContent(tab.id, content)}
             editorViewRef={editorViewRef}
+            mdFiles={mdFiles}
           />
         )}
 
@@ -231,6 +255,8 @@ export default function MarkdownEditor({ tab }: Props) {
             onChange={(content) => useAppStore.getState().updateTabContent(tab.id, content)}
             showTOC={showTOC}
             editorViewRef={editorViewRef}
+            projectPath={projectPath}
+            mdFiles={mdFiles}
           />
         )}
       </div>
@@ -428,6 +454,8 @@ interface SplitViewProps {
   onChange: (content: string) => void
   showTOC: boolean
   editorViewRef?: React.MutableRefObject<EditorView | null>
+  projectPath: string
+  mdFiles: { name: string; path: string }[]
 }
 
 // ── Sync scroll: editor → preview ────────────────────────────────────────────
@@ -757,7 +785,7 @@ function MdToolbar({ editorViewRef, onTableClick }: MdToolbarProps) {
   )
 }
 
-function SplitView({ tab, onSave, onChange, showTOC, editorViewRef }: SplitViewProps) {
+function SplitView({ tab, onSave, onChange, showTOC, editorViewRef, projectPath, mdFiles }: SplitViewProps) {
   const [splitRatio, setSplitRatio] = useState(50)
   const [isDragging, setIsDragging] = useState(false)
   const previewScrollRef = useRef<HTMLDivElement | null>(null)
@@ -798,6 +826,7 @@ function SplitView({ tab, onSave, onChange, showTOC, editorViewRef }: SplitViewP
           onChange={onChange}
           editorViewRef={editorViewRef}
           onScroll={syncScroll}
+          mdFiles={mdFiles}
         />
       </div>
 
@@ -815,7 +844,13 @@ function SplitView({ tab, onSave, onChange, showTOC, editorViewRef }: SplitViewP
           </div>
           <MarkdownView tab={tab} scrollRef={previewScrollRef} lineNumbers />
         </div>
-        {showTOC && <TableOfContents content={tab.content} />}
+        {showTOC && (
+          <RightPanel
+            content={tab.content}
+            filePath={tab.filePath}
+            projectPath={projectPath}
+          />
+        )}
       </div>
     </div>
   )

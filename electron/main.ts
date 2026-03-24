@@ -491,6 +491,105 @@ ipcMain.handle('fs:collectTags', async (_e, dirPath: string) => {
   return results
 })
 
+// ── IPC: Collect links from all .md files in project ────────────────────────
+async function collectLinksInDir(
+  dirPath: string,
+  results: { filePath: string; fileName: string; targets: string[] }[],
+  depth = 0
+) {
+  if (depth > 6) return
+  try {
+    const entries = await readdir(dirPath, { withFileTypes: true })
+    for (const entry of entries) {
+      if (entry.name.startsWith('.')) continue
+      const fullPath = join(dirPath, entry.name)
+      if (entry.isDirectory()) {
+        await collectLinksInDir(fullPath, results, depth + 1)
+      } else if (entry.isFile() && extname(entry.name).toLowerCase() === '.md') {
+        try {
+          const content = await readFile(fullPath, 'utf-8')
+          const targets = new Set<string>()
+          // [[wikilink]] and [[wikilink|label]]
+          const wikiRe = /\[\[([^\]|]+)(?:\|[^\]]+)?\]\]/g
+          let m: RegExpExecArray | null
+          while ((m = wikiRe.exec(content)) !== null) {
+            targets.add(m[1].trim())
+          }
+          // [text](file.md) - local (non-http) links
+          const mdLinkRe = /\[([^\]]+)\]\(([^)]+)\)/g
+          while ((m = mdLinkRe.exec(content)) !== null) {
+            const href = m[2].trim()
+            if (!href.startsWith('http') && !href.startsWith('mailto') && !href.startsWith('#') && !href.startsWith('docuflow')) {
+              const name = href.split('/').pop()?.split('\\').pop() || href
+              targets.add(name)
+            }
+          }
+          if (targets.size > 0) {
+            results.push({ filePath: fullPath, fileName: entry.name, targets: [...targets] })
+          }
+        } catch {}
+      }
+    }
+  } catch {}
+}
+
+ipcMain.handle('fs:collectLinks', async (_e, dirPath: string) => {
+  const results: { filePath: string; fileName: string; targets: string[] }[] = []
+  await collectLinksInDir(dirPath, results)
+  return results
+})
+
+// ── IPC: Find file by name in directory ─────────────────────────────────────
+async function findFileInDir(dirPath: string, name: string, depth = 0): Promise<string | null> {
+  if (depth > 6) return null
+  const nameLower = name.toLowerCase()
+  const nameWithMd = nameLower.endsWith('.md') ? nameLower : nameLower + '.md'
+  try {
+    const entries = await readdir(dirPath, { withFileTypes: true })
+    for (const entry of entries) {
+      if (entry.name.startsWith('.')) continue
+      const fullPath = join(dirPath, entry.name)
+      if (entry.isDirectory()) {
+        const found = await findFileInDir(fullPath, name, depth + 1)
+        if (found) return found
+      } else if (entry.isFile()) {
+        const entryLower = entry.name.toLowerCase()
+        if (entryLower === nameLower || entryLower === nameWithMd) {
+          return fullPath
+        }
+      }
+    }
+  } catch {}
+  return null
+}
+
+ipcMain.handle('fs:findFile', async (_e, dirPath: string, name: string) => {
+  return findFileInDir(dirPath, name)
+})
+
+// ── IPC: List all .md files in project ──────────────────────────────────────
+async function listMdFilesInDir(dirPath: string, results: string[], depth = 0) {
+  if (depth > 6) return
+  try {
+    const entries = await readdir(dirPath, { withFileTypes: true })
+    for (const entry of entries) {
+      if (entry.name.startsWith('.')) continue
+      const fullPath = join(dirPath, entry.name)
+      if (entry.isDirectory()) {
+        await listMdFilesInDir(fullPath, results, depth + 1)
+      } else if (entry.isFile() && extname(entry.name).toLowerCase() === '.md') {
+        results.push(fullPath)
+      }
+    }
+  } catch {}
+}
+
+ipcMain.handle('fs:listMdFiles', async (_e, dirPath: string) => {
+  const results: string[] = []
+  await listMdFilesInDir(dirPath, results)
+  return results
+})
+
 // ── IPC: Create file ────────────────────────────────────────────────────────
 ipcMain.handle('fs:createFile', async (_e, filePath: string, content: string = '') => {
   try {
