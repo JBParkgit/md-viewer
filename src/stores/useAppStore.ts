@@ -69,8 +69,8 @@ interface AppStore {
   setLastOpenedDir: (projectId: string, dirPath: string) => void
 
   // Sidebar tab
-  sidebarTab: 'tree' | 'favorites' | 'recent' | 'gallery' | 'tags' | 'git' | 'kanban' | 'calendar'
-  setSidebarTab: (tab: 'tree' | 'favorites' | 'recent' | 'gallery' | 'tags' | 'git' | 'kanban' | 'calendar') => void
+  sidebarTab: 'tree' | 'favorites' | 'recent' | 'gallery' | 'tags' | 'docs' | 'git' | 'kanban' | 'calendar'
+  setSidebarTab: (tab: 'tree' | 'favorites' | 'recent' | 'gallery' | 'tags' | 'docs' | 'git' | 'kanban' | 'calendar') => void
   gitSelectedProject: string | null
   setGitSelectedProject: (path: string | null) => void
   kanbanProjectPath: string | null
