@@ -80,4 +80,16 @@ contextBridge.exposeInMainWorld('electronAPI', {
   // Theme
   setTheme: (mode: 'system' | 'light' | 'dark') => ipcRenderer.invoke('theme:set', mode),
   isDark: () => ipcRenderer.invoke('theme:isDark'),
+
+  // Calendar
+  calendarSignIn: () => ipcRenderer.invoke('calendar:signIn'),
+  calendarSignOut: () => ipcRenderer.invoke('calendar:signOut'),
+  calendarIsSignedIn: () => ipcRenderer.invoke('calendar:isSignedIn'),
+  calendarListCalendars: () => ipcRenderer.invoke('calendar:listCalendars'),
+  calendarSelectCalendars: (ids: string[]) => ipcRenderer.invoke('calendar:selectCalendars', ids),
+  calendarGetSelectedCalendars: () => ipcRenderer.invoke('calendar:getSelectedCalendars'),
+  calendarListEvents: (timeMin: string, timeMax: string) => ipcRenderer.invoke('calendar:listEvents', timeMin, timeMax),
+  calendarCreateEvent: (calendarId: string, event: unknown) => ipcRenderer.invoke('calendar:createEvent', calendarId, event),
+  calendarUpdateEvent: (calendarId: string, eventId: string, updates: unknown) => ipcRenderer.invoke('calendar:updateEvent', calendarId, eventId, updates),
+  calendarDeleteEvent: (calendarId: string, eventId: string) => ipcRenderer.invoke('calendar:deleteEvent', calendarId, eventId),
 })

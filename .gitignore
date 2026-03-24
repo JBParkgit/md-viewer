@@ -7,3 +7,5 @@ out/
 release/
 .omc/
 Docuflow.exe
+electron/googleCredentials.ts
+client_secret_*.json

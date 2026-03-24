@@ -6,6 +6,8 @@ import { execFile } from 'child_process'
 import mammoth from 'mammoth'
 import Store from 'electron-store'
 import chokidar from 'chokidar'
+import * as googleAuth from './googleAuth'
+import * as googleCalendar from './googleCalendar'
 
 // electron-store 타입 정의
 interface StoreSchema {
@@ -829,5 +831,92 @@ ipcMain.handle('git:config', async (_e, cwd: string) => {
       remotePush: remotePush.output || '',
       defaultBranch: defaultBranch.output || '',
     }),
+  }
+})
+
+// ── IPC: Google Calendar ──────────────────────────────────────────────────────
+ipcMain.handle('calendar:signIn', async () => {
+  try {
+    return await googleAuth.signIn()
+  } catch (err) {
+    return { success: false, error: String(err) }
+  }
+})
+
+ipcMain.handle('calendar:signOut', () => {
+  googleAuth.signOut()
+  return { success: true }
+})
+
+ipcMain.handle('calendar:isSignedIn', () => {
+  return googleAuth.isSignedIn()
+})
+
+ipcMain.handle('calendar:listCalendars', async () => {
+  try {
+    const calendars = await googleCalendar.listCalendars()
+    return { success: true, data: calendars }
+  } catch (err) {
+    return { success: false, error: String(err) }
+  }
+})
+
+ipcMain.handle('calendar:selectCalendars', (_e, ids: string[]) => {
+  googleAuth.setSelectedCalendarIds(ids)
+  return { success: true }
+})
+
+ipcMain.handle('calendar:getSelectedCalendars', () => {
+  return googleAuth.getSelectedCalendarIds()
+})
+
+ipcMain.handle('calendar:listEvents', async (_e, timeMin: string, timeMax: string) => {
+  try {
+    const calendarIds = googleAuth.getSelectedCalendarIds()
+    if (calendarIds.length === 0) return { success: false, error: '캘린더를 선택해주세요.' }
+    // 여러 캘린더의 이벤트를 병렬로 조회 후 병합
+    const results = await Promise.all(
+      calendarIds.map(id => googleCalendar.listEvents(id, timeMin, timeMax).catch(() => []))
+    )
+    const allEvents = results.flat()
+    // 시작 시간 기준 정렬
+    allEvents.sort((a, b) => {
+      const aTime = a.start.dateTime || a.start.date || ''
+      const bTime = b.start.dateTime || b.start.date || ''
+      return aTime.localeCompare(bTime)
+    })
+    return { success: true, data: allEvents }
+  } catch (err) {
+    return { success: false, error: String(err) }
+  }
+})
+
+ipcMain.handle('calendar:createEvent', async (_e, calendarId: string, event: googleCalendar.CalendarEventData) => {
+  try {
+    if (!calendarId) return { success: false, error: '캘린더를 선택해주세요.' }
+    const created = await googleCalendar.createEvent(calendarId, event)
+    return { success: true, data: created }
+  } catch (err) {
+    return { success: false, error: String(err) }
+  }
+})
+
+ipcMain.handle('calendar:updateEvent', async (_e, calendarId: string, eventId: string, updates: Partial<googleCalendar.CalendarEventData>) => {
+  try {
+    if (!calendarId) return { success: false, error: '캘린더를 선택해주세요.' }
+    const updated = await googleCalendar.updateEvent(calendarId, eventId, updates)
+    return { success: true, data: updated }
+  } catch (err) {
+    return { success: false, error: String(err) }
+  }
+})
+
+ipcMain.handle('calendar:deleteEvent', async (_e, calendarId: string, eventId: string) => {
+  try {
+    if (!calendarId) return { success: false, error: '캘린더를 선택해주세요.' }
+    await googleCalendar.deleteEvent(calendarId, eventId)
+    return { success: true }
+  } catch (err) {
+    return { success: false, error: String(err) }
   }
 })

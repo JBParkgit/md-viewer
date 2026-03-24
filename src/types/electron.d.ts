@@ -1,3 +1,23 @@
+export interface CalendarInfo {
+  id: string
+  summary: string
+  primary: boolean
+  accessRole: string
+  backgroundColor?: string
+}
+
+export interface CalendarEventData {
+  id?: string
+  calendarId?: string
+  summary: string
+  description?: string
+  start: { dateTime?: string; date?: string }
+  end: { dateTime?: string; date?: string }
+  linkedFiles?: string[]
+  linkedProjectPath?: string
+  colorId?: string
+}
+
 export interface FileNode {
   name: string
   path: string
@@ -72,6 +92,18 @@ export interface ElectronAPI {
   storeSet: (key: string, value: unknown) => Promise<void>
   setTheme: (mode: 'system' | 'light' | 'dark') => Promise<void>
   isDark: () => Promise<boolean>
+
+  // Calendar
+  calendarSignIn: () => Promise<{ success: boolean; error?: string }>
+  calendarSignOut: () => Promise<{ success: boolean }>
+  calendarIsSignedIn: () => Promise<boolean>
+  calendarListCalendars: () => Promise<{ success: boolean; data?: CalendarInfo[]; error?: string }>
+  calendarSelectCalendars: (ids: string[]) => Promise<{ success: boolean }>
+  calendarGetSelectedCalendars: () => Promise<string[]>
+  calendarListEvents: (timeMin: string, timeMax: string) => Promise<{ success: boolean; data?: CalendarEventData[]; error?: string }>
+  calendarCreateEvent: (calendarId: string, event: CalendarEventData) => Promise<{ success: boolean; data?: CalendarEventData; error?: string }>
+  calendarUpdateEvent: (calendarId: string, eventId: string, updates: Partial<CalendarEventData>) => Promise<{ success: boolean; data?: CalendarEventData; error?: string }>
+  calendarDeleteEvent: (calendarId: string, eventId: string) => Promise<{ success: boolean; error?: string }>
 }
 
 declare global {

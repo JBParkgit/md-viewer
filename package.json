@@ -20,6 +20,7 @@
     "@uiw/react-codemirror": "^4.25.8",
     "chokidar": "^4.0.3",
     "electron-store": "^8.2.0",
+    "googleapis": "^171.4.0",
     "mammoth": "^1.12.0",
     "react": "^18.3.1",
     "react-dom": "^18.3.1",

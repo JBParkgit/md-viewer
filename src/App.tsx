@@ -10,6 +10,7 @@ import DocxViewer from './components/DocxViewer'
 import VideoPlayer from './components/VideoPlayer'
 import WelcomeScreen from './components/WelcomeScreen'
 import KanbanBoard from './components/KanbanBoard'
+import CalendarView from './components/CalendarView'
 import { isRecentlySaved } from './utils/recentSave'
 
 export default function App() {
@@ -185,9 +186,11 @@ export default function App() {
           onOpenFilePinned={(p, n) => openFile(p, n, false)}
         />
         <div className="flex-1 flex flex-col overflow-hidden">
-          {sidebarTab !== 'kanban' && <TabBar />}
+          {sidebarTab !== 'kanban' && sidebarTab !== 'calendar' && <TabBar />}
           <main className="flex-1 overflow-hidden">
-          {sidebarTab === 'kanban' ? (
+          {sidebarTab === 'calendar' ? (
+            <CalendarView onOpenFile={(p, n) => { useAppStore.getState().setSidebarTab('tree'); openFile(p, n, false) }} />
+          ) : sidebarTab === 'kanban' ? (
             <KanbanBoard onOpenFile={(p, n) => { useAppStore.getState().setSidebarTab('tree'); openFile(p, n, false) }} />
           ) : activeTab ? (
             activeTab.fileType === 'image'
