@@ -14,6 +14,60 @@ interface Props {
   lineNumbers?: boolean
 }
 
+function slugify(text: string): string {
+  return text
+    .toLowerCase()
+    .replace(/[^\w\s가-힣-]/g, '')
+    .replace(/\s+/g, '-')
+    .replace(/-+/g, '-')
+    .trim()
+}
+
+const headingSlugCounts = new Map<string, number>()
+
+function getTextContent(node: any): string {
+  if (typeof node === 'string') return node
+  if (Array.isArray(node)) return node.map(getTextContent).join('')
+  if (node?.props?.children) return getTextContent(node.props.children)
+  return ''
+}
+
+function scrollToHeading(id: string) {
+  const container = document.querySelector('[data-md-scroll]') as HTMLElement | null
+  if (!container) return
+
+  // 1) Try by ID directly
+  let el = document.getElementById(id) || document.getElementById(slugify(id))
+
+  // 2) Fallback: match heading by text content
+  if (!el) {
+    const slug = slugify(id)
+    el = Array.from(container.querySelectorAll('h1, h2, h3, h4, h5, h6'))
+      .find(h => slugify(h.textContent || '') === slug) as HTMLElement | null
+  }
+
+  if (!el) return
+  const top = el.getBoundingClientRect().top - container.getBoundingClientRect().top + container.scrollTop
+  container.scrollTo({ top, behavior: 'smooth' })
+}
+
+function HeadingWithId({ level, children, node, ...props }: { level: number; children?: any; node?: any; [k: string]: any }) {
+  const text = getTextContent(children)
+  let slug = slugify(text)
+  const count = headingSlugCounts.get(slug) ?? 0
+  if (count > 0) slug = `${slug}-${count}`
+  headingSlugCounts.set(slug, count + 1)
+  const tagProps = { id: slug, ...props }
+  switch (level) {
+    case 1: return <h1 {...tagProps}>{children}</h1>
+    case 2: return <h2 {...tagProps}>{children}</h2>
+    case 3: return <h3 {...tagProps}>{children}</h3>
+    case 4: return <h4 {...tagProps}>{children}</h4>
+    case 5: return <h5 {...tagProps}>{children}</h5>
+    default: return <h6 {...tagProps}>{children}</h6>
+  }
+}
+
 function TagBadges({ tags }: { tags: string[] }) {
   const tagColors = useAppStore(s => s.tagColors)
   return (
@@ -88,12 +142,12 @@ export default function MarkdownView({ tab, scrollRef, lineNumbers }: Props) {
     return map
   }, [tab.content, lineNumbers])
 
-  // Restore scroll position
+  // Restore scroll position (include filePath so preview tab reuse resets to top)
   useEffect(() => {
     if (containerRef.current) {
       containerRef.current.scrollTop = tab.scrollPos
     }
-  }, [tab.id])
+  }, [tab.id, tab.filePath])
 
   // Save scroll position on scroll
   const handleScroll = useCallback(() => {
@@ -131,9 +185,12 @@ export default function MarkdownView({ tab, scrollRef, lineNumbers }: Props) {
     return `file:///${abs}`
   }
 
+  headingSlugCounts.clear()
+
   return (
     <div
       ref={containerRef}
+      data-md-scroll
       className="h-full overflow-y-auto bg-white dark:bg-gray-900"
       onScroll={handleScroll}
     >
@@ -152,6 +209,12 @@ export default function MarkdownView({ tab, scrollRef, lineNumbers }: Props) {
             remarkPlugins={[remarkGfm]}
             urlTransform={(url) => url}
             components={{
+              h1: (p) => <HeadingWithId level={1} {...p} />,
+              h2: (p) => <HeadingWithId level={2} {...p} />,
+              h3: (p) => <HeadingWithId level={3} {...p} />,
+              h4: (p) => <HeadingWithId level={4} {...p} />,
+              h5: (p) => <HeadingWithId level={5} {...p} />,
+              h6: (p) => <HeadingWithId level={6} {...p} />,
               code({ className, children, ...props }) {
                 const match = /language-(\w+)/.exec(className || '')
                 const isBlock = !props.ref && match
@@ -198,9 +261,24 @@ export default function MarkdownView({ tab, scrollRef, lineNumbers }: Props) {
                     </span>
                   )
                 }
+                // Internal anchor link → smooth scroll to heading
+                if (href?.startsWith('#')) {
+                  return (
+                    <a
+                      href={href}
+                      onClick={(e) => {
+                        e.preventDefault()
+                        scrollToHeading(decodeURIComponent(href.slice(1)))
+                      }}
+                      {...props}
+                    >
+                      {children}
+                    </a>
+                  )
+                }
                 // Local .md file link → open as document
                 if (href && !href.startsWith('http') && !href.startsWith('mailto') &&
-                    !href.startsWith('#') && !href.startsWith('data:') && !href.startsWith('file://')) {
+                    !href.startsWith('data:') && !href.startsWith('file://')) {
                   const fileName = href.split(/[/\\]/).pop() || href
                   const ext = fileName.split('.').pop()?.toLowerCase()
                   if (!ext || ext === 'md') {
@@ -215,6 +293,7 @@ export default function MarkdownView({ tab, scrollRef, lineNumbers }: Props) {
                     )
                   }
                 }
+                // External link → open in browser
                 return (
                   <a
                     href={href}

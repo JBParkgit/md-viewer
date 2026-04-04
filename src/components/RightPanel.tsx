@@ -72,9 +72,15 @@ function TocPanel({ content }: { content: string }) {
   }, [content])
 
   const handleClick = (id: string) => {
+    const container = document.querySelector('[data-md-scroll]') as HTMLElement | null
+    if (!container) return
     const el = document.getElementById(id)
+      || container.querySelector(`h1, h2, h3, h4, h5, h6`)
+        && Array.from(container.querySelectorAll('h1, h2, h3, h4, h5, h6'))
+            .find(h => slugify(h.textContent || '') === id) as HTMLElement | null
     if (el) {
-      el.scrollIntoView({ behavior: 'smooth', block: 'start' })
+      const top = el.getBoundingClientRect().top - container.getBoundingClientRect().top + container.scrollTop
+      container.scrollTo({ top, behavior: 'smooth' })
       setActiveId(id)
     }
   }
