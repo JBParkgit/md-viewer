@@ -24,6 +24,7 @@ interface CalendarStore {
   checkAuth: () => Promise<void>
   signIn: () => Promise<{ success: boolean; error?: string }>
   signOut: () => Promise<void>
+  switchAccount: () => Promise<{ success: boolean; error?: string }>
   loadCalendars: () => Promise<void>
   toggleCalendar: (id: string) => Promise<void>
   loadEvents: () => Promise<void>
@@ -116,6 +117,11 @@ export const useCalendarStore = create<CalendarStore>((set, get) => ({
     await window.electronAPI.calendarSignOut()
     get().stopPolling()
     set({ isSignedIn: false, calendars: [], selectedCalendarIds: [], events: [] })
+  },
+
+  switchAccount: async () => {
+    await get().signOut()
+    return await get().signIn()
   },
 
   loadCalendars: async () => {

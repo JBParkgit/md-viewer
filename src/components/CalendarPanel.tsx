@@ -183,7 +183,7 @@ export default function CalendarPanel({ onOpenFile }: Props) {
   const {
     isSignedIn, isLoading, calendars, selectedCalendarIds, calendarColors, events,
     currentMonth, selectedDate,
-    checkAuth, signIn, signOut, loadCalendars, toggleCalendar,
+    checkAuth, signIn, signOut, switchAccount, loadCalendars, toggleCalendar,
     setCalendarColor, getCalendarColor,
     setCurrentMonth, setSelectedDate,
     startPolling, stopPolling,
@@ -424,12 +424,25 @@ export default function CalendarPanel({ onOpenFile }: Props) {
 
       {/* Footer */}
       <div className="border-t border-gray-200 dark:border-gray-700 px-2 py-1.5 flex items-center justify-between">
-        <button
-          onClick={signOut}
-          className="text-[10px] text-gray-400 hover:text-red-500 transition-colors"
-        >
-          로그아웃
-        </button>
+        <div className="flex items-center gap-2">
+          <button
+            onClick={signOut}
+            className="text-[10px] text-gray-400 hover:text-red-500 transition-colors"
+          >
+            로그아웃
+          </button>
+          <button
+            onClick={async () => {
+              setError(null)
+              const res = await switchAccount()
+              if (!res.success) setError(res.error || '계정 변경 실패')
+            }}
+            disabled={isLoading}
+            className="text-[10px] text-gray-400 hover:text-blue-500 transition-colors disabled:opacity-50"
+          >
+            계정 변경
+          </button>
+        </div>
         {isLoading && (
           <div className="w-3 h-3 border border-blue-400 border-t-transparent rounded-full animate-spin" />
         )}

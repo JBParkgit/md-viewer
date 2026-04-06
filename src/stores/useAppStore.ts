@@ -101,6 +101,11 @@ interface AppStore {
   projectColors: Record<string, number>
   setProjectColor: (projectId: string, colorIndex: number) => void
 
+  // Sidebar visibility
+  sidebarCollapsed: boolean
+  setSidebarCollapsed: (collapsed: boolean) => void
+  toggleSidebar: () => void
+
   // Settings
   darkMode: 'system' | 'light' | 'dark'
   setDarkMode: (mode: 'system' | 'light' | 'dark') => void
@@ -370,6 +375,17 @@ export const useAppStore = create<AppStore>((set, get) => ({
     })
   },
 
+  // ── Sidebar visibility ───────────────────────────────────────────────────
+  sidebarCollapsed: false,
+  setSidebarCollapsed: (collapsed) => {
+    window.electronAPI.storeSet('sidebarCollapsed', collapsed)
+    set({ sidebarCollapsed: collapsed })
+  },
+  toggleSidebar: () => {
+    const next = !get().sidebarCollapsed
+    window.electronAPI.storeSet('sidebarCollapsed', next)
+    set({ sidebarCollapsed: next })
+  },
   // ── Settings ──────────────────────────────────────────────────────────────
   darkMode: 'system',
   setDarkMode: (mode) => {

@@ -30,7 +30,7 @@ export default function App() {
   // ── Initialize from electron-store ────────────────────────────────────────
   useEffect(() => {
     const init = async () => {
-      const [savedDark, savedSize, savedFont, savedFavs, savedRecent, savedProjects, savedTags, savedTagColors, savedProjectColors] = await Promise.all([
+      const [savedDark, savedSize, savedFont, savedFavs, savedRecent, savedProjects, savedTags, savedTagColors, savedProjectColors, savedSidebarCollapsed] = await Promise.all([
         window.electronAPI.storeGet('darkMode'),
         window.electronAPI.storeGet('fontSize'),
         window.electronAPI.storeGet('fontFamily'),
@@ -40,6 +40,7 @@ export default function App() {
         window.electronAPI.storeGet('fileTags'),
         window.electronAPI.storeGet('tagColors'),
         window.electronAPI.storeGet('projectColors'),
+        window.electronAPI.storeGet('sidebarCollapsed'),
       ])
 
       const dark = (savedDark as string) || 'system'
@@ -51,6 +52,7 @@ export default function App() {
       const tags = (savedTags as Record<string, string[]>) || {}
       const tagColors = (savedTagColors as Record<string, string>) || {}
       const projectColors = (savedProjectColors as Record<string, number>) || {}
+      const sidebarCollapsed = (savedSidebarCollapsed as boolean) || false
 
       document.documentElement.style.setProperty('--md-font-size', `${size}px`)
       // Apply saved font family
@@ -90,6 +92,7 @@ export default function App() {
         fileTags: tags,
         tagColors,
         projectColors,
+        sidebarCollapsed,
       })
     }
     init()

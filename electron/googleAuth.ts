@@ -76,7 +76,7 @@ export function signIn(): Promise<{ success: boolean; error?: string }> {
       const authUrl = oauth2Client.generateAuthUrl({
         access_type: 'offline',
         scope: SCOPES,
-        prompt: 'consent',
+        prompt: 'select_account consent',
       })
 
       // 시스템 기본 브라우저에서 Google 로그인 페이지 열기

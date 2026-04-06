@@ -215,6 +215,9 @@ export default function Sidebar({ onOpenFile, onOpenFilePinned }: Props) {
     removeFavorite,
     recentFiles,
     reorderProject,
+    sidebarCollapsed,
+    setSidebarCollapsed,
+    toggleSidebar,
   } = useAppStore()
 
   const [fullTextResults, setFullTextResults] = useState<SearchResult[]>([])
@@ -223,6 +226,19 @@ export default function Sidebar({ onOpenFile, onOpenFilePinned }: Props) {
   const [dragOverIndex, setDragOverIndex] = useState<number | null>(null)
   const [isDragging, setIsDragging] = useState(false)
   const [emptyContextMenu, setEmptyContextMenu] = useState<{ x: number; y: number } | null>(null)
+  const sidebarRef = useRef<HTMLDivElement>(null)
+
+  // Keyboard shortcut: Ctrl+B to toggle sidebar
+  useEffect(() => {
+    const handler = (e: KeyboardEvent) => {
+      if ((e.ctrlKey || e.metaKey) && e.key === 'b') {
+        e.preventDefault()
+        toggleSidebar()
+      }
+    }
+    window.addEventListener('keydown', handler)
+    return () => window.removeEventListener('keydown', handler)
+  }, [toggleSidebar])
 
   // Full-text search across all projects
   useEffect(() => {
@@ -267,13 +283,19 @@ export default function Sidebar({ onOpenFile, onOpenFilePinned }: Props) {
   }
 
   return (
-    <div className="flex flex-row flex-shrink-0 select-none">
-      {/* ── Activity Bar (vertical icon strip) ── */}
+    <div
+      ref={sidebarRef}
+      className="flex flex-row flex-shrink-0 select-none"
+    >
+      {/* ── Activity Bar (always visible) ── */}
       <div className="flex flex-col items-center w-10 bg-gray-100 dark:bg-gray-900 border-r border-gray-200 dark:border-gray-700 py-1 gap-0.5 flex-shrink-0">
         {TABS.map((tab) => (
           <button
             key={tab.id}
-            onClick={() => setSidebarTab(tab.id)}
+            onClick={() => {
+              setSidebarTab(tab.id)
+              if (sidebarCollapsed) setSidebarCollapsed(false)
+            }}
             className={`w-9 h-9 flex items-center justify-center rounded-md transition-colors relative ${
               sidebarTab === tab.id
                 ? 'text-blue-600 dark:text-blue-400 bg-white dark:bg-gray-800'
@@ -287,12 +309,37 @@ export default function Sidebar({ onOpenFile, onOpenFilePinned }: Props) {
             {tab.icon}
           </button>
         ))}
+
+        {/* Spacer */}
+        <div className="flex-1" />
+
+        {/* Collapse toggle button */}
+        <button
+          onClick={toggleSidebar}
+          className="w-9 h-9 flex items-center justify-center rounded-md text-gray-400 dark:text-gray-500 hover:text-gray-600 dark:hover:text-gray-300 hover:bg-gray-200 dark:hover:bg-gray-800 transition-colors"
+          title={sidebarCollapsed ? '패널 열기 (Ctrl+B)' : '패널 닫기 (Ctrl+B)'}
+        >
+          <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            {sidebarCollapsed ? (
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.7} d="M13 5l7 7-7 7M5 5l7 7-7 7" />
+            ) : (
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.7} d="M11 19l-7-7 7-7M19 19l-7-7 7-7" />
+            )}
+          </svg>
+        </button>
+
       </div>
 
-      {/* ── Panel ── */}
+      {/* ── Panel (animated collapse) ── */}
       <div
-        className="flex flex-col border-r border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-800 relative"
-        style={{ width }}
+        className="flex flex-col border-r border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-800 relative flex-shrink-0"
+        style={{
+          width: sidebarCollapsed ? 0 : width,
+          minWidth: sidebarCollapsed ? 0 : width,
+          transition: 'width 200ms cubic-bezier(0.4, 0, 0.2, 1), min-width 200ms cubic-bezier(0.4, 0, 0.2, 1), opacity 150ms ease',
+          overflow: 'hidden',
+          opacity: sidebarCollapsed ? 0 : 1,
+        }}
       >
         {/* Action toolbar (tree tab only) */}
         {sidebarTab === 'tree' && (
