@@ -30,6 +30,15 @@ html, body, #root {
   overscroll-behavior: contain;
 }
 
+/* Promote the CodeMirror scroller to its own compositor layer so fast
+   scroll can be handled by the GPU, and scope layout/paint so line
+   measurement inside doesn't invalidate ancestors. Chromium can skip
+   a lot of work when the scroll container is isolated like this. */
+.cm-scroller {
+  will-change: scroll-position;
+  contain: layout paint;
+}
+
 /* ── Markdown View Styles ─────────────────────────────────────────────────── */
 .markdown-body {
   font-size: var(--md-font-size);

@@ -458,19 +458,19 @@ export default function LiveEditor({ tab, onSave, onChange, editorViewRef, onScr
           lineNumbers: false,
           foldGutter: false,
           dropCursor: true,
-          allowMultipleSelections: true,
-          indentOnInput: true,
+          // All of these add per-cursor-move / per-edit decoration or
+          // input-handler work and aren't critical for markdown prose,
+          // so they're off to free up frame budget during fast scroll.
+          allowMultipleSelections: false,
+          indentOnInput: false,
+          bracketMatching: false,
+          rectangularSelection: false,
+          highlightActiveLine: false,
+          highlightSelectionMatches: false,
           syntaxHighlighting: true,
-          bracketMatching: true,
           closeBrackets: true,
           autocompletion: false, // handled by wikiLinkCompletion extension
-          rectangularSelection: true,
           crosshairCursor: false,
-          highlightActiveLine: true,
-          // Off: scanning the whole doc for matches of the current selection
-          // adds decoration work on every scroll/selection change, worsening
-          // fast-scroll jank on large files.
-          highlightSelectionMatches: false,
           closeBracketsKeymap: true,
           searchKeymap: true,
           historyKeymap: true,
