@@ -18,6 +18,7 @@ export default function Toolbar() {
   const {
     addProject, darkMode, setDarkMode, fontSize, setFontSize, fontFamily, setFontFamily,
     showTOC, setShowTOC, toggleSidebar, sidebarCollapsed,
+    spellcheckEnabled, setSpellcheckEnabled,
   } = useAppStore()
   const [openIdx, setOpenIdx] = useState<number | null>(null)
 
@@ -66,6 +67,7 @@ export default function Toolbar() {
       items: [
         { label: '사이드바 토글', shortcut: 'Ctrl+B', action: toggleSidebar, checked: !sidebarCollapsed },
         { label: '목차 패널', shortcut: 'Ctrl+Shift+T', action: () => setShowTOC(!showTOC), checked: showTOC },
+        { label: '맞춤법 검사', action: () => setSpellcheckEnabled(!spellcheckEnabled), checked: spellcheckEnabled },
         { separator: true },
         { label: darkMode === 'dark' ? '라이트 모드' : '다크 모드', action: toggleDark },
         { separator: true },

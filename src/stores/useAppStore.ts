@@ -115,6 +115,8 @@ interface AppStore {
   setFontFamily: (font: string) => void
   showTOC: boolean
   setShowTOC: (show: boolean) => void
+  spellcheckEnabled: boolean
+  setSpellcheckEnabled: (enabled: boolean) => void
   rightPanelTab: 'toc' | 'links' | 'backlinks' | 'related'
   setRightPanelTab: (tab: 'toc' | 'links' | 'backlinks' | 'related') => void
 }
@@ -421,6 +423,15 @@ export const useAppStore = create<AppStore>((set, get) => ({
 
   showTOC: true,
   setShowTOC: (show) => set({ showTOC: show }),
+
+  // Spellcheck is off by default because Chromium's Korean dictionary
+  // lookups add layout/paint work as CodeMirror's viewport scrolls in
+  // new lines, noticeably worsening fast-scroll jank on large files.
+  spellcheckEnabled: false,
+  setSpellcheckEnabled: (enabled) => {
+    window.electronAPI.storeSet('spellcheckEnabled', enabled)
+    set({ spellcheckEnabled: enabled })
+  },
 
   rightPanelTab: 'toc',
   setRightPanelTab: (tab) => set({ rightPanelTab: tab }),

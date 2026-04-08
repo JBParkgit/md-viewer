@@ -93,7 +93,7 @@ const darkTheme = EditorView.theme({
 }, { dark: true })
 
 export default function LiveEditor({ tab, onSave, onChange, editorViewRef, onScroll, mdFiles = [] }: Props) {
-  const { darkMode, fontSize, projects } = useAppStore()
+  const { darkMode, fontSize, projects, spellcheckEnabled } = useAppStore()
   const isDark = darkMode === 'dark' ||
     (darkMode === 'system' && document.documentElement.classList.contains('dark'))
   const cmRef = useRef<ReactCodeMirrorRef>(null)
@@ -402,14 +402,14 @@ export default function LiveEditor({ tab, onSave, onChange, editorViewRef, onScr
       codeLanguages: languages,
     }),
     EditorView.lineWrapping,
-    EditorView.contentAttributes.of({ spellcheck: 'true' }),
+    EditorView.contentAttributes.of({ spellcheck: spellcheckEnabled ? 'true' : 'false' }),
     syntaxHighlighting(noUnderlineLinks),
     keymap.of([indentWithTab]),
     saveKeymap,
     pasteHandler,
     wikiLinkCompletion,
     isDark ? darkTheme : lightTheme,
-  ], [isDark, saveKeymap, pasteHandler, wikiLinkCompletion])
+  ], [isDark, saveKeymap, pasteHandler, wikiLinkCompletion, spellcheckEnabled])
 
   const handleChange = useCallback((value: string) => {
     if (tab.isPreview) {
