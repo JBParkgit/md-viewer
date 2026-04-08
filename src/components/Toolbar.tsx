@@ -40,12 +40,23 @@ export default function Toolbar() {
     setDarkMode(darkMode === 'dark' ? 'light' : 'dark')
   }, [darkMode, setDarkMode])
 
+  const handleRegisterMdAssociation = useCallback(async () => {
+    const res = await window.electronAPI.registerMdAssociation()
+    if (res.success) {
+      alert('탐색기의 .md 파일 "연결 프로그램" 목록에 Docuflow가 등록되었습니다.\n\n탐색기에서 .md 파일을 우클릭 → "연결 프로그램" → Docuflow를 선택하면 기본 앱으로 지정됩니다.')
+    } else {
+      alert('등록 실패: ' + (res.error || '알 수 없는 오류'))
+    }
+  }, [])
+
   const menus: MenuDef[] = [
     {
       label: '파일',
       items: [
         { label: '파일 열기', shortcut: 'Ctrl+O', action: handleOpenFile },
         { label: '프로젝트 폴더 추가', shortcut: 'Ctrl+Shift+O', action: handleAddProject },
+        { separator: true },
+        { label: '탐색기에서 .md 파일 연결 등록', action: handleRegisterMdAssociation },
         { separator: true },
         { label: '종료', shortcut: 'Ctrl+Q', action: () => window.close() },
       ],

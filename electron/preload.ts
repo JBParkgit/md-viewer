@@ -47,6 +47,7 @@ contextBridge.exposeInMainWorld('electronAPI', {
   openPath: (path: string) => ipcRenderer.invoke('shell:openPath', path),
   startDrag: (filePath: string) => ipcRenderer.send('native:startDrag', filePath),
   copyImageToClipboard: (filePath: string) => ipcRenderer.invoke('clipboard:copyImage', filePath),
+  registerMdAssociation: () => ipcRenderer.invoke('shell:registerMdAssociation'),
 
   // File path from dropped File object
   getPathForFile: (file: File) => webUtils.getPathForFile(file),

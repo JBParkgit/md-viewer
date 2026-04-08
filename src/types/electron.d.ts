@@ -67,6 +67,7 @@ export interface ElectronAPI {
   openPath: (path: string) => Promise<string | null>
   startDrag: (filePath: string) => void
   copyImageToClipboard: (filePath: string) => Promise<{ success: boolean; error?: string }>
+  registerMdAssociation: () => Promise<{ success: boolean; error?: string }>
   // Git
   gitIsRepo: (cwd: string) => Promise<boolean>
   gitClone: (url: string, destDir: string) => Promise<{ success: boolean; output?: string; error?: string }>

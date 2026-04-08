@@ -152,6 +152,42 @@ app.on('activate', () => {
   if (BrowserWindow.getAllWindows().length === 0) createWindow()
 })
 
+// ── IPC: Register .md file association (Windows, HKCU, no admin) ────────────
+function regAdd(args: string[]): Promise<void> {
+  return new Promise((resolve, reject) => {
+    execFile('reg.exe', args, (err, _stdout, stderr) => {
+      if (err) reject(new Error(stderr?.toString() || err.message))
+      else resolve()
+    })
+  })
+}
+
+ipcMain.handle('shell:registerMdAssociation', async () => {
+  if (process.platform !== 'win32') {
+    return { success: false, error: 'Windows에서만 지원됩니다.' }
+  }
+  if (!app.isPackaged) {
+    return { success: false, error: '개발 모드에서는 사용할 수 없습니다. 빌드된 앱에서 실행해 주세요.' }
+  }
+  try {
+    const exe = process.execPath
+    const progId = 'Docuflow.Markdown'
+    const iconValue = `"${exe}",0`
+    const cmdValue = `"${exe}" "%1"`
+    const base = `HKCU\\Software\\Classes\\${progId}`
+
+    await regAdd(['add', base, '/ve', '/d', 'Markdown Document', '/f'])
+    await regAdd(['add', `${base}\\DefaultIcon`, '/ve', '/d', iconValue, '/f'])
+    await regAdd(['add', `${base}\\shell\\open\\command`, '/ve', '/d', cmdValue, '/f'])
+    await regAdd(['add', 'HKCU\\Software\\Classes\\.md\\OpenWithProgids', '/v', progId, '/t', 'REG_NONE', '/f'])
+    await regAdd(['add', 'HKCU\\Software\\Classes\\.markdown\\OpenWithProgids', '/v', progId, '/t', 'REG_NONE', '/f'])
+
+    return { success: true }
+  } catch (e) {
+    return { success: false, error: e instanceof Error ? e.message : String(e) }
+  }
+})
+
 // ── IPC: Open File Dialog ───────────────────────────────────────────────────
 ipcMain.handle('dialog:openFile', async () => {
   if (!mainWindow) return null
