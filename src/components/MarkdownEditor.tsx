@@ -636,13 +636,19 @@ function MdToolbar({ editorViewRef, onTableClick }: MdToolbarProps) {
       {/* Unordered list */}
       <button onClick={() => wrapLine('- ')} className={btnCls} title="목록 (Ctrl+Shift+8)">
         <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 6h16M4 12h16M4 18h16" />
+          <circle cx="5" cy="6" r="1.5" fill="currentColor" stroke="none" />
+          <circle cx="5" cy="12" r="1.5" fill="currentColor" stroke="none" />
+          <circle cx="5" cy="18" r="1.5" fill="currentColor" stroke="none" />
+          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 6h11M10 12h11M10 18h11" />
         </svg>
       </button>
       {/* Ordered list */}
       <button onClick={() => wrapLineNumbered()} className={btnCls} title="번호 목록 (Ctrl+Shift+7)">
         <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 6h16M4 12h16M4 18h8" />
+          <text x="1" y="9" fontSize="7" fontWeight="700" fill="currentColor" stroke="none">1.</text>
+          <text x="1" y="15" fontSize="7" fontWeight="700" fill="currentColor" stroke="none">2.</text>
+          <text x="1" y="21" fontSize="7" fontWeight="700" fill="currentColor" stroke="none">3.</text>
+          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 7h12M10 13h12M10 19h12" />
         </svg>
       </button>
       {/* Checklist */}
