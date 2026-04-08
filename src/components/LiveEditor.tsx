@@ -5,6 +5,15 @@ import { languages } from '@codemirror/language-data'
 import { oneDark } from '@codemirror/theme-one-dark'
 import { indentWithTab } from '@codemirror/commands'
 import { autocompletion, type CompletionContext } from '@codemirror/autocomplete'
+import { HighlightStyle, syntaxHighlighting } from '@codemirror/language'
+import { tags as t } from '@lezer/highlight'
+
+// Strip the default underline from markdown link text so YAML frontmatter
+// arrays like `tags: [ "a", "b" ]` — which the markdown parser misreads as
+// a link reference — don't appear underlined.
+const noUnderlineLinks = HighlightStyle.define([
+  { tag: t.link, textDecoration: 'none' },
+])
 import { useAppStore, type Tab } from '../stores/useAppStore'
 
 interface Props {
@@ -375,6 +384,8 @@ export default function LiveEditor({ tab, onSave, onChange, editorViewRef, onScr
       codeLanguages: languages,
     }),
     EditorView.lineWrapping,
+    EditorView.contentAttributes.of({ spellcheck: 'true' }),
+    syntaxHighlighting(noUnderlineLinks),
     keymap.of([indentWithTab]),
     saveKeymap,
     pasteHandler,
