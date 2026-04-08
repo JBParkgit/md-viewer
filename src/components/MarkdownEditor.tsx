@@ -471,8 +471,9 @@ interface SplitViewProps {
 function useSyncScroll(editorViewRef: React.MutableRefObject<EditorView | null> | undefined, previewRef: React.RefObject<HTMLDivElement | null>) {
   const lockRef = useRef(false)
   const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const rafRef = useRef<number | null>(null)
 
-  const sync = useCallback(() => {
+  const syncImpl = useCallback(() => {
     const view = editorViewRef?.current
     const preview = previewRef.current
     if (!view || !preview || lockRef.current) return
@@ -500,6 +501,21 @@ function useSyncScroll(editorViewRef: React.MutableRefObject<EditorView | null> 
       timerRef.current = setTimeout(() => { lockRef.current = false }, 80)
     }
   }, [editorViewRef, previewRef])
+
+  // rAF-throttled wrapper: at most one sync per animation frame, so
+  // fast scrolls don't backlog dozens of DOM queries + posAtCoords calls.
+  const sync = useCallback(() => {
+    if (rafRef.current != null) return
+    rafRef.current = requestAnimationFrame(() => {
+      rafRef.current = null
+      syncImpl()
+    })
+  }, [syncImpl])
+
+  useEffect(() => () => {
+    if (rafRef.current != null) cancelAnimationFrame(rafRef.current)
+    if (timerRef.current) clearTimeout(timerRef.current)
+  }, [])
 
   return sync
 }

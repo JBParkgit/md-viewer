@@ -87,7 +87,12 @@ function TagBadges({ tags }: { tags: string[] }) {
 }
 
 export default function MarkdownView({ tab, scrollRef, lineNumbers }: Props) {
-  const { darkMode, setTabScrollPos, projects, openTab } = useAppStore()
+  // Individual selectors: keep MarkdownView from re-rendering on every
+  // unrelated store update (tabs array mutations, kanban state, etc.).
+  const darkMode = useAppStore(s => s.darkMode)
+  const setTabScrollPos = useAppStore(s => s.setTabScrollPos)
+  const projects = useAppStore(s => s.projects)
+  const openTab = useAppStore(s => s.openTab)
   const isDark = darkMode === 'dark' ||
     (darkMode === 'system' && document.documentElement.classList.contains('dark'))
   const containerRef = useRef<HTMLDivElement>(null)
@@ -151,12 +156,22 @@ export default function MarkdownView({ tab, scrollRef, lineNumbers }: Props) {
     }
   }, [tab.id, tab.filePath])
 
-  // Save scroll position on scroll
+  // Save scroll position — debounced so a fast scroll doesn't trigger
+  // a store update (and thus a MarkdownView re-render) on every frame.
+  // Scroll position only matters for restoration on tab switch, so
+  // persisting it 200ms after scroll stops is fine.
+  const scrollSaveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   const handleScroll = useCallback(() => {
-    if (containerRef.current) {
-      setTabScrollPos(tab.id, containerRef.current.scrollTop)
-    }
+    if (scrollSaveTimerRef.current) clearTimeout(scrollSaveTimerRef.current)
+    scrollSaveTimerRef.current = setTimeout(() => {
+      if (containerRef.current) {
+        setTabScrollPos(tab.id, containerRef.current.scrollTop)
+      }
+    }, 200)
   }, [tab.id, setTabScrollPos])
+  useEffect(() => () => {
+    if (scrollSaveTimerRef.current) clearTimeout(scrollSaveTimerRef.current)
+  }, [])
 
   // After render: assign data-line attributes to block elements
   const markdownBodyRef = useRef<HTMLDivElement>(null)

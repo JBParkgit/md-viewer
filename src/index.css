@@ -19,6 +19,15 @@ html, body, #root {
   height: 100%;
   overflow: hidden;
   font-family: var(--md-font-family);
+  overscroll-behavior: none;
+}
+
+/* Kill fast-scroll overshoot / rubber-band past document edges in the
+   editor and preview scroll containers, and stop scroll chaining from
+   bleeding into parent scrollers. */
+.cm-scroller,
+[data-md-scroll] {
+  overscroll-behavior: contain;
 }
 
 /* ── Markdown View Styles ─────────────────────────────────────────────────── */
