@@ -8,6 +8,7 @@ import LiveEditor from './LiveEditor'
 import RightPanel from './RightPanel'
 import TableEditor from './TableEditor'
 import FloatingToolbar from './FloatingToolbar'
+import EditorContextMenu from './EditorContextMenu'
 
 interface Props {
   tab: Tab
@@ -263,6 +264,14 @@ export default function MarkdownEditor({ tab }: Props) {
 
       {/* Floating selection toolbar */}
       {layout !== 'preview' && <FloatingToolbar editorViewRef={editorViewRef} />}
+
+      {/* Right-click context menu over the editor */}
+      {layout !== 'preview' && (
+        <EditorContextMenu
+          editorViewRef={editorViewRef}
+          onTableClick={() => setShowTableEditor(true)}
+        />
+      )}
 
       {/* Table Editor Modal */}
       {showTableEditor && (
