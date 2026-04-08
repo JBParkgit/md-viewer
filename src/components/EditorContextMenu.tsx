@@ -99,6 +99,28 @@ export default function EditorContextMenu({ editorViewRef, onTableClick }: Props
     view.focus()
   }
 
+  const wrapCodeBlock = () => {
+    const view = editorViewRef.current
+    if (!view) return
+    const { from, to } = view.state.selection.main
+    if (from === to) {
+      const text = '\n```\n\n```\n'
+      view.dispatch({ changes: { from, insert: text }, selection: { anchor: from + 5 } })
+    } else {
+      const selected = view.state.sliceDoc(from, to)
+      const needLead = from > 0 && view.state.doc.sliceString(from - 1, from) !== '\n'
+      const needTrail = to < view.state.doc.length && view.state.doc.sliceString(to, to + 1) !== '\n'
+      const prefix = (needLead ? '\n' : '') + '```\n'
+      const suffix = (selected.endsWith('\n') ? '' : '\n') + '```' + (needTrail ? '\n' : '')
+      const replacement = prefix + selected + suffix
+      view.dispatch({
+        changes: { from, to, insert: replacement },
+        selection: { anchor: from + prefix.length, head: from + prefix.length + selected.length },
+      })
+    }
+    view.focus()
+  }
+
   // ── Clipboard / history actions ─────────────────────────────────────────
   const runCopy = async () => {
     const view = editorViewRef.current
@@ -215,7 +237,7 @@ export default function EditorContextMenu({ editorViewRef, onTableClick }: Props
     { label: '체크리스트', shortcut: 'Ctrl+Shift+9', action: run(() => wrapLine('- [ ] ')) },
     { label: '인용', shortcut: 'Ctrl+Shift+Q', action: run(() => wrapLine('> ')) },
     { separator: true, label: '' },
-    { label: '코드 블록', shortcut: 'Ctrl+Shift+E', action: run(() => insert('\n```\n코드\n```\n')) },
+    { label: '코드 블록', shortcut: 'Ctrl+Shift+E', action: run(wrapCodeBlock) },
     { label: '이미지', shortcut: 'Ctrl+Shift+I', action: run(() => insert('![설명](images/)')) },
     { label: '표 삽입…', action: run(onTableClick) },
     { label: '구분선', action: run(() => insert('\n---\n')) },

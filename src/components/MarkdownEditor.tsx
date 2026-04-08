@@ -519,6 +519,29 @@ function MdToolbar({ editorViewRef, onTableClick }: MdToolbarProps) {
     view.focus()
   }
 
+  const wrapCodeBlock = () => {
+    const view = editorViewRef.current
+    if (!view) return
+    const { from, to } = view.state.selection.main
+    if (from === to) {
+      // No selection: insert empty block with cursor between fences
+      const text = '\n```\n\n```\n'
+      view.dispatch({ changes: { from, insert: text }, selection: { anchor: from + 5 } })
+    } else {
+      const selected = view.state.sliceDoc(from, to)
+      const needLead = from > 0 && view.state.doc.sliceString(from - 1, from) !== '\n'
+      const needTrail = to < view.state.doc.length && view.state.doc.sliceString(to, to + 1) !== '\n'
+      const prefix = (needLead ? '\n' : '') + '```\n'
+      const suffix = (selected.endsWith('\n') ? '' : '\n') + '```' + (needTrail ? '\n' : '')
+      const replacement = prefix + selected + suffix
+      view.dispatch({
+        changes: { from, to, insert: replacement },
+        selection: { anchor: from + prefix.length, head: from + prefix.length + selected.length },
+      })
+    }
+    view.focus()
+  }
+
   const wrap = (before: string, after: string) => {
     const view = editorViewRef.current
     if (!view) return
@@ -680,7 +703,7 @@ function MdToolbar({ editorViewRef, onTableClick }: MdToolbarProps) {
       <div className={sepCls} />
 
       {/* Code block */}
-      <button onClick={() => insert('\n```\n코드\n```\n')} className={btnCls} title="코드 블록 (Ctrl+Shift+E)">
+      <button onClick={wrapCodeBlock} className={btnCls} title="코드 블록 (Ctrl+Shift+E)">
         <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
           <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 9l3 3-3 3m5 0h3M5 20h14a2 2 0 002-2V6a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
         </svg>

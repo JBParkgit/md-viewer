@@ -187,7 +187,25 @@ export default function LiveEditor({ tab, onSave, onChange, editorViewRef, onScr
       { key: 'Mod-Shift-9', run: (view) => toggleLinePrefix(view, '- [ ] ') },
       { key: 'Mod-Shift-q', run: (view) => toggleLinePrefix(view, '> ') },
       { key: 'Mod-Shift-h', run: (view) => wrapSelection(view, '==', '==') },
-      { key: 'Mod-Shift-e', run: (view) => { const pos = view.state.selection.main.head; view.dispatch({ changes: { from: pos, insert: '\n```\n\n```\n' }, selection: { anchor: pos + 5 } }); return true } },
+      { key: 'Mod-Shift-e', run: (view) => {
+        const { from, to } = view.state.selection.main
+        if (from === to) {
+          const text = '\n```\n\n```\n'
+          view.dispatch({ changes: { from, insert: text }, selection: { anchor: from + 5 } })
+        } else {
+          const selected = view.state.sliceDoc(from, to)
+          const needLead = from > 0 && view.state.doc.sliceString(from - 1, from) !== '\n'
+          const needTrail = to < view.state.doc.length && view.state.doc.sliceString(to, to + 1) !== '\n'
+          const prefix = (needLead ? '\n' : '') + '```\n'
+          const suffix = (selected.endsWith('\n') ? '' : '\n') + '```' + (needTrail ? '\n' : '')
+          const replacement = prefix + selected + suffix
+          view.dispatch({
+            changes: { from, to, insert: replacement },
+            selection: { anchor: from + prefix.length, head: from + prefix.length + selected.length },
+          })
+        }
+        return true
+      } },
       { key: 'Mod-Shift-i', run: (view) => { const pos = view.state.selection.main.head; view.dispatch({ changes: { from: pos, insert: '![설명](images/)' }, selection: { anchor: pos + 10 } }); return true } },
     ])
   ), [onSave, wrapSelection, toggleLinePrefix])
