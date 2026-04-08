@@ -28,6 +28,24 @@ html, body, #root {
   color: inherit;
 }
 
+/* ==text== highlight */
+.markdown-body mark {
+  background-color: #fef08a;
+  color: #713f12;
+  padding: 0 0.15em;
+  border-radius: 3px;
+}
+.dark .markdown-body mark {
+  background-color: #a16207;
+  color: #fef9c3;
+}
+
+/* Mermaid diagram container */
+.mermaid-diagram svg {
+  max-width: 100%;
+  height: auto;
+}
+
 .markdown-body h1,
 .markdown-body h2,
 .markdown-body h3,

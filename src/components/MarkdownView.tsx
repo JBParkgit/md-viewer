@@ -7,6 +7,8 @@ import { useAppStore, type Tab } from '../stores/useAppStore'
 import ImageModal from './ImageModal'
 import { parseFrontmatterTags, stripFrontmatter } from '../utils/frontmatter'
 import { getTagColorClasses } from './TagPanel'
+import remarkMark from '../utils/remarkMark'
+import MermaidDiagram from './MermaidDiagram'
 
 interface Props {
   tab: Tab
@@ -206,7 +208,7 @@ export default function MarkdownView({ tab, scrollRef, lineNumbers }: Props) {
         )}
         <div ref={markdownBodyRef} className="markdown-body text-gray-900 dark:text-gray-100">
           <ReactMarkdown
-            remarkPlugins={[remarkGfm]}
+            remarkPlugins={[remarkGfm, remarkMark]}
             urlTransform={(url) => url}
             components={{
               h1: (p) => <HeadingWithId level={1} {...p} />,
@@ -218,6 +220,14 @@ export default function MarkdownView({ tab, scrollRef, lineNumbers }: Props) {
               code({ className, children, ...props }) {
                 const match = /language-(\w+)/.exec(className || '')
                 const isBlock = !props.ref && match
+                if (isBlock && match[1] === 'mermaid') {
+                  return (
+                    <MermaidDiagram
+                      code={String(children).replace(/\n$/, '')}
+                      isDark={isDark}
+                    />
+                  )
+                }
                 if (isBlock) {
                   return (
                     <SyntaxHighlighter
