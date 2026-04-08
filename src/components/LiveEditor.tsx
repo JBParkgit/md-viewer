@@ -467,7 +467,10 @@ export default function LiveEditor({ tab, onSave, onChange, editorViewRef, onScr
           rectangularSelection: true,
           crosshairCursor: false,
           highlightActiveLine: true,
-          highlightSelectionMatches: true,
+          // Off: scanning the whole doc for matches of the current selection
+          // adds decoration work on every scroll/selection change, worsening
+          // fast-scroll jank on large files.
+          highlightSelectionMatches: false,
           closeBracketsKeymap: true,
           searchKeymap: true,
           historyKeymap: true,

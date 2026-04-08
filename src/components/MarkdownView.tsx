@@ -187,7 +187,7 @@ export default function MarkdownView({ tab, scrollRef, lineNumbers }: Props) {
   }, [tab.content, lineNumbers, lineMap])
 
   // Convert local file paths to file:// URLs
-  const resolveImageSrc = (src: string): string => {
+  const resolveImageSrc = useCallback((src: string): string => {
     if (!src) return src
     if (src.startsWith('http://') || src.startsWith('https://') || src.startsWith('file://') || src.startsWith('data:')) {
       return src
@@ -200,7 +200,120 @@ export default function MarkdownView({ tab, scrollRef, lineNumbers }: Props) {
     const dir = tab.filePath.replace(/[\\/][^\\/]+$/, '')
     const abs = `${dir}/${src}`.replace(/\\/g, '/')
     return `file:///${abs}`
-  }
+  }, [tab.filePath])
+
+  // Memoize the ReactMarkdown element so it isn't recreated (and the
+  // components object isn't re-instantiated, which would force every
+  // SyntaxHighlighter block to re-highlight) on unrelated re-renders.
+  const markdownElement = useMemo(() => (
+    <ReactMarkdown
+      remarkPlugins={[remarkGfm, remarkMark]}
+      urlTransform={(url) => url}
+      components={{
+        h1: (p) => <HeadingWithId level={1} {...p} />,
+        h2: (p) => <HeadingWithId level={2} {...p} />,
+        h3: (p) => <HeadingWithId level={3} {...p} />,
+        h4: (p) => <HeadingWithId level={4} {...p} />,
+        h5: (p) => <HeadingWithId level={5} {...p} />,
+        h6: (p) => <HeadingWithId level={6} {...p} />,
+        code({ className, children, ...props }) {
+          const match = /language-(\w+)/.exec(className || '')
+          const isBlock = !props.ref && match
+          if (isBlock && match[1] === 'mermaid') {
+            return (
+              <MermaidDiagram
+                code={String(children).replace(/\n$/, '')}
+                isDark={isDark}
+              />
+            )
+          }
+          if (isBlock) {
+            return (
+              <SyntaxHighlighter
+                style={isDark ? oneDark : oneLight}
+                language={match[1]}
+                PreTag="div"
+                customStyle={{ margin: '1em 0', borderRadius: '8px', fontSize: '0.875em' }}
+              >
+                {String(children).replace(/\n$/, '')}
+              </SyntaxHighlighter>
+            )
+          }
+          return <code className={className} {...props}>{children}</code>
+        },
+        img({ src, alt, ...props }) {
+          const resolved = resolveImageSrc(src || '')
+          return (
+            <img
+              src={resolved}
+              alt={alt}
+              {...props}
+              onClick={() => setModalImage(resolved)}
+              style={{ cursor: 'zoom-in' }}
+            />
+          )
+        },
+        a({ href, children, ...props }) {
+          if (href?.startsWith('docuflow://')) {
+            const name = decodeURIComponent(href.slice(11))
+            return (
+              <span
+                className="wikilink cursor-pointer text-purple-600 dark:text-purple-400 hover:underline font-medium"
+                onClick={() => handleWikiLink(name)}
+                title={`문서 열기: ${name}`}
+              >
+                {children}
+              </span>
+            )
+          }
+          if (href?.startsWith('#')) {
+            return (
+              <a
+                href={href}
+                onClick={(e) => {
+                  e.preventDefault()
+                  scrollToHeading(decodeURIComponent(href.slice(1)))
+                }}
+                {...props}
+              >
+                {children}
+              </a>
+            )
+          }
+          if (href && !href.startsWith('http') && !href.startsWith('mailto') &&
+              !href.startsWith('data:') && !href.startsWith('file://')) {
+            const fileName = href.split(/[/\\]/).pop() || href
+            const ext = fileName.split('.').pop()?.toLowerCase()
+            if (!ext || ext === 'md') {
+              return (
+                <span
+                  className="cursor-pointer text-blue-600 dark:text-blue-400 hover:underline"
+                  onClick={() => handleWikiLink(fileName.replace(/\.md$/i, '') || fileName)}
+                  title={`문서 열기: ${fileName}`}
+                >
+                  {children}
+                </span>
+              )
+            }
+          }
+          return (
+            <a
+              href={href}
+              onClick={(e) => {
+                e.preventDefault()
+                if (href?.startsWith('http')) window.open(href, '_blank')
+              }}
+              {...props}
+            >
+              {children}
+            </a>
+          )
+        },
+      }}
+    >
+      {processedContent}
+    </ReactMarkdown>
+  ), [processedContent, isDark, resolveImageSrc, handleWikiLink])
 
   headingSlugCounts.clear()
 
@@ -222,120 +335,7 @@ export default function MarkdownView({ tab, scrollRef, lineNumbers }: Props) {
           </div>
         )}
         <div ref={markdownBodyRef} className="markdown-body text-gray-900 dark:text-gray-100">
-          <ReactMarkdown
-            remarkPlugins={[remarkGfm, remarkMark]}
-            urlTransform={(url) => url}
-            components={{
-              h1: (p) => <HeadingWithId level={1} {...p} />,
-              h2: (p) => <HeadingWithId level={2} {...p} />,
-              h3: (p) => <HeadingWithId level={3} {...p} />,
-              h4: (p) => <HeadingWithId level={4} {...p} />,
-              h5: (p) => <HeadingWithId level={5} {...p} />,
-              h6: (p) => <HeadingWithId level={6} {...p} />,
-              code({ className, children, ...props }) {
-                const match = /language-(\w+)/.exec(className || '')
-                const isBlock = !props.ref && match
-                if (isBlock && match[1] === 'mermaid') {
-                  return (
-                    <MermaidDiagram
-                      code={String(children).replace(/\n$/, '')}
-                      isDark={isDark}
-                    />
-                  )
-                }
-                if (isBlock) {
-                  return (
-                    <SyntaxHighlighter
-                      style={isDark ? oneDark : oneLight}
-                      language={match[1]}
-                      PreTag="div"
-                      customStyle={{
-                        margin: '1em 0',
-                        borderRadius: '8px',
-                        fontSize: '0.875em',
-                      }}
-                    >
-                      {String(children).replace(/\n$/, '')}
-                    </SyntaxHighlighter>
-                  )
-                }
-                return <code className={className} {...props}>{children}</code>
-              },
-              img({ src, alt, ...props }) {
-                const resolved = resolveImageSrc(src || '')
-                return (
-                  <img
-                    src={resolved}
-                    alt={alt}
-                    {...props}
-                    onClick={() => setModalImage(resolved)}
-                    style={{ cursor: 'zoom-in' }}
-                  />
-                )
-              },
-              a({ href, children, ...props }) {
-                if (href?.startsWith('docuflow://')) {
-                  const name = decodeURIComponent(href.slice(11))
-                  return (
-                    <span
-                      className="wikilink cursor-pointer text-purple-600 dark:text-purple-400 hover:underline font-medium"
-                      onClick={() => handleWikiLink(name)}
-                      title={`문서 열기: ${name}`}
-                    >
-                      {children}
-                    </span>
-                  )
-                }
-                // Internal anchor link → smooth scroll to heading
-                if (href?.startsWith('#')) {
-                  return (
-                    <a
-                      href={href}
-                      onClick={(e) => {
-                        e.preventDefault()
-                        scrollToHeading(decodeURIComponent(href.slice(1)))
-                      }}
-                      {...props}
-                    >
-                      {children}
-                    </a>
-                  )
-                }
-                // Local .md file link → open as document
-                if (href && !href.startsWith('http') && !href.startsWith('mailto') &&
-                    !href.startsWith('data:') && !href.startsWith('file://')) {
-                  const fileName = href.split(/[/\\]/).pop() || href
-                  const ext = fileName.split('.').pop()?.toLowerCase()
-                  if (!ext || ext === 'md') {
-                    return (
-                      <span
-                        className="cursor-pointer text-blue-600 dark:text-blue-400 hover:underline"
-                        onClick={() => handleWikiLink(fileName.replace(/\.md$/i, '') || fileName)}
-                        title={`문서 열기: ${fileName}`}
-                      >
-                        {children}
-                      </span>
-                    )
-                  }
-                }
-                // External link → open in browser
-                return (
-                  <a
-                    href={href}
-                    onClick={(e) => {
-                      e.preventDefault()
-                      if (href?.startsWith('http')) window.open(href, '_blank')
-                    }}
-                    {...props}
-                  >
-                    {children}
-                  </a>
-                )
-              },
-            }}
-          >
-            {processedContent}
-          </ReactMarkdown>
+          {markdownElement}
         </div>
       </div>
 
