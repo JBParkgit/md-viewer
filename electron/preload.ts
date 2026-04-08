@@ -2,6 +2,12 @@ import { contextBridge, ipcRenderer, webUtils } from 'electron'
 
 contextBridge.exposeInMainWorld('electronAPI', {
   // Folder / File system
+  openFileDialog: () => ipcRenderer.invoke('dialog:openFile'),
+  onOpenExternal: (cb: (filePath: string) => void) => {
+    const handler = (_e: Electron.IpcRendererEvent, filePath: string) => cb(filePath)
+    ipcRenderer.on('file:openExternal', handler)
+    return () => ipcRenderer.removeListener('file:openExternal', handler)
+  },
   openFolder: () => ipcRenderer.invoke('dialog:openFolder'),
   readDir: (path: string) => ipcRenderer.invoke('fs:readDir', path),
   readFile: (path: string) => ipcRenderer.invoke('fs:readFile', path),

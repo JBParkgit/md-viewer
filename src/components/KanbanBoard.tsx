@@ -334,6 +334,7 @@ interface CardProps {
 
 function KanbanCardItem({ card, columnId, projectPath, boardId, isArchiveColumn, archiveDays, onEdit, onOpenFile, onDragStart }: CardProps) {
   const { removeCard, archiveCard } = useKanbanStore()
+  const [showDeleteConfirm, setShowDeleteConfirm] = useState(false)
   const isOverdue = card.dueDate && new Date(card.dueDate) < new Date(new Date().toDateString())
 
   // Calculate remaining days before auto-archive
@@ -439,7 +440,7 @@ function KanbanCardItem({ card, columnId, projectPath, boardId, isArchiveColumn,
           </svg>
         </button>
         <button
-          onClick={e => { e.stopPropagation(); removeCard(projectPath, boardId, columnId, card.id) }}
+          onClick={e => { e.stopPropagation(); setShowDeleteConfirm(true) }}
           className="ml-auto opacity-0 group-hover:opacity-100 hover:text-red-500 transition-all"
           title="삭제"
         >
@@ -448,6 +449,36 @@ function KanbanCardItem({ card, columnId, projectPath, boardId, isArchiveColumn,
           </svg>
         </button>
       </div>
+
+      {/* Delete confirmation */}
+      {showDeleteConfirm && (
+        <>
+          <div className="fixed inset-0 z-50" onClick={e => { e.stopPropagation(); setShowDeleteConfirm(false) }} />
+          <div
+            className="fixed z-50 top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-600 rounded-xl shadow-2xl p-5 min-w-72"
+            onClick={e => e.stopPropagation()}
+          >
+            <p className="text-sm font-medium text-gray-800 dark:text-gray-100 mb-1">카드 삭제</p>
+            <p className="text-xs text-gray-500 dark:text-gray-400 mb-4">
+              "<span className="font-medium text-gray-700 dark:text-gray-200">{card.title}</span>" 카드를 삭제하시겠습니까?
+            </p>
+            <div className="flex justify-end gap-2">
+              <button
+                onClick={e => { e.stopPropagation(); setShowDeleteConfirm(false) }}
+                className="px-3 py-1.5 text-xs rounded-lg border border-gray-200 dark:border-gray-600 text-gray-600 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors"
+              >
+                취소
+              </button>
+              <button
+                onClick={e => { e.stopPropagation(); removeCard(projectPath, boardId, columnId, card.id); setShowDeleteConfirm(false) }}
+                className="px-3 py-1.5 text-xs rounded-lg bg-red-500 hover:bg-red-600 text-white transition-colors"
+              >
+                삭제
+              </button>
+            </div>
+          </div>
+        </>
+      )}
 
       {/* File popup for multiple linked files */}
       {filePopup && card.linkedFiles && card.linkedFiles.length > 1 && (
@@ -583,8 +614,15 @@ function BoardSection({ board, projectPath, onOpenFile, isOnly }: BoardSectionPr
                 <div className="fixed inset-0 z-40" onClick={() => setSettingsPos(null)} />
                 <div className="fixed z-50 bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-600 rounded-xl shadow-xl p-4 w-64"
                   style={{ left: Math.min(settingsPos.x, window.innerWidth - 280), top: settingsPos.y + 8 }}>
-                  <h4 className="text-xs font-semibold text-gray-700 dark:text-gray-300 mb-3">아카이브 설정</h4>
+                  <h4 className="text-xs font-semibold text-gray-700 dark:text-gray-300 mb-3">보드 설정</h4>
                   <div className="space-y-3">
+                    <div>
+                      <label className="block text-xs text-gray-500 dark:text-gray-400 mb-1">보드 이름</label>
+                      <input type="text" value={nameValue} onChange={e => setNameValue(e.target.value)}
+                        onBlur={() => { if (nameValue.trim()) renameBoard(projectPath, boardId, nameValue.trim()) }}
+                        onKeyDown={e => { if (e.key === 'Enter') (e.target as HTMLInputElement).blur() }}
+                        className="w-full px-3 py-1.5 text-sm rounded-lg border border-gray-200 dark:border-gray-600 bg-white dark:bg-gray-700 focus:outline-none focus:border-blue-400" />
+                    </div>
                     <div>
                       <label className="block text-xs text-gray-500 dark:text-gray-400 mb-1">자동 아카이브 기간 (일)</label>
                       <input type="number" min={1} max={365} value={board.archiveDays}

@@ -55,6 +55,20 @@
       "dist/**/*",
       "dist-electron/**/*"
     ],
+    "fileAssociations": [
+      {
+        "ext": "md",
+        "name": "Markdown",
+        "description": "Markdown Document",
+        "role": "Viewer"
+      },
+      {
+        "ext": "markdown",
+        "name": "Markdown",
+        "description": "Markdown Document",
+        "role": "Viewer"
+      }
+    ],
     "win": {
       "target": [
         {

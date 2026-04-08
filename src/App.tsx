@@ -174,6 +174,69 @@ export default function App() {
     openTab(filePath, fileName, '', 'other', preview)
   }, [openTab])
 
+  // ── Open file from menu ────────────────────────────────────────────────────
+  useEffect(() => {
+    const handler = (e: Event) => {
+      const { path, name } = (e as CustomEvent).detail
+      openFile(path, name, false)
+    }
+    window.addEventListener('menu:openFile', handler)
+    return () => window.removeEventListener('menu:openFile', handler)
+  }, [openFile])
+
+  // ── Open file from OS (command line, file association, second-instance) ───
+  useEffect(() => {
+    const unsub = window.electronAPI.onOpenExternal((filePath) => {
+      const name = filePath.split(/[/\\]/).pop() || filePath
+      openFile(filePath, name, false)
+    })
+    return unsub
+  }, [openFile])
+
+  // ── Ctrl+O: Open file dialog ─────────────────────────────────────────────
+  useEffect(() => {
+    const handler = async (e: KeyboardEvent) => {
+      if ((e.ctrlKey || e.metaKey) && e.key === 'o') {
+        e.preventDefault()
+        const paths = await window.electronAPI.openFileDialog()
+        if (paths) {
+          for (const p of paths) {
+            const name = p.split(/[/\\]/).pop() || p
+            openFile(p, name, false)
+          }
+        }
+      }
+    }
+    window.addEventListener('keydown', handler)
+    return () => window.removeEventListener('keydown', handler)
+  }, [openFile])
+
+  // ── Drag & drop files onto app ────────────────────────────────────────────
+  useEffect(() => {
+    const handleDragOver = (e: DragEvent) => {
+      e.preventDefault()
+      e.stopPropagation()
+    }
+    const handleDrop = (e: DragEvent) => {
+      e.preventDefault()
+      e.stopPropagation()
+      if (e.dataTransfer?.files) {
+        for (const file of Array.from(e.dataTransfer.files)) {
+          const filePath = window.electronAPI.getPathForFile(file)
+          if (filePath) {
+            openFile(filePath, file.name, false)
+          }
+        }
+      }
+    }
+    document.addEventListener('dragover', handleDragOver)
+    document.addEventListener('drop', handleDrop)
+    return () => {
+      document.removeEventListener('dragover', handleDragOver)
+      document.removeEventListener('drop', handleDrop)
+    }
+  }, [openFile])
+
   // ── Dark mode class sync ──────────────────────────────────────────────────
   useEffect(() => {
     if (darkMode === 'dark') document.documentElement.classList.add('dark')

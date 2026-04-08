@@ -94,7 +94,55 @@ function createWindow() {
   })
 }
 
-app.whenReady().then(createWindow)
+// ── Single instance lock & file open from OS ────────────────────────────────
+let pendingFilePath: string | null = null
+
+function getFileFromArgs(args: string[]): string | null {
+  // Skip electron/exe args, find first existing file path
+  for (const arg of args.slice(1)) {
+    if (arg.startsWith('-') || arg.startsWith('--')) continue
+    const ext = arg.split('.').pop()?.toLowerCase()
+    if (ext && ['md', 'markdown', 'txt', 'log'].includes(ext) && existsSync(arg)) {
+      return arg
+    }
+  }
+  return null
+}
+
+function sendFileToRenderer(filePath: string) {
+  if (mainWindow?.webContents) {
+    mainWindow.webContents.send('file:openExternal', filePath)
+  }
+}
+
+const gotLock = app.requestSingleInstanceLock()
+if (!gotLock) {
+  app.quit()
+} else {
+  app.on('second-instance', (_e, argv) => {
+    const filePath = getFileFromArgs(argv)
+    if (filePath) sendFileToRenderer(filePath)
+    if (mainWindow) {
+      if (mainWindow.isMinimized()) mainWindow.restore()
+      mainWindow.focus()
+    }
+  })
+
+  app.whenReady().then(() => {
+    createWindow()
+    // Open file passed via command line on first launch
+    const filePath = getFileFromArgs(process.argv)
+    if (filePath) {
+      pendingFilePath = filePath
+      mainWindow?.webContents.once('did-finish-load', () => {
+        if (pendingFilePath) {
+          sendFileToRenderer(pendingFilePath)
+          pendingFilePath = null
+        }
+      })
+    }
+  })
+}
 
 app.on('window-all-closed', () => {
   if (process.platform !== 'darwin') app.quit()
@@ -102,6 +150,23 @@ app.on('window-all-closed', () => {
 
 app.on('activate', () => {
   if (BrowserWindow.getAllWindows().length === 0) createWindow()
+})
+
+// ── IPC: Open File Dialog ───────────────────────────────────────────────────
+ipcMain.handle('dialog:openFile', async () => {
+  if (!mainWindow) return null
+  const result = await dialog.showOpenDialog(mainWindow, {
+    properties: ['openFile', 'multiSelections'],
+    title: '파일 열기',
+    filters: [
+      { name: 'Markdown', extensions: ['md', 'markdown'] },
+      { name: '문서', extensions: ['txt', 'log', 'pdf', 'doc', 'docx'] },
+      { name: '이미지', extensions: ['png', 'jpg', 'jpeg', 'gif', 'webp', 'svg', 'bmp'] },
+      { name: '모든 파일', extensions: ['*'] },
+    ],
+  })
+  if (result.canceled || result.filePaths.length === 0) return null
+  return result.filePaths
 })
 
 // ── IPC: Open Folder Dialog ──────────────────────────────────────────────────
