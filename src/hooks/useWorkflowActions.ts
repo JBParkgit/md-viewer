@@ -49,6 +49,7 @@ export function useWorkflowActions(filePath: string, projectPath: string): UseWo
       await refreshFile(filePath, projectPath)
       setSavingState('저장됨')
       setTimeout(() => setSavingState(null), 1200)
+      window.dispatchEvent(new CustomEvent('file-saved', { detail: filePath }))
     } else {
       setSavingState('저장 실패')
       setTimeout(() => setSavingState(null), 2500)

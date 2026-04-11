@@ -45,6 +45,7 @@ export default function MarkdownEditor({ tab }: Props) {
 
   const [saveError, setSaveError] = useState<string | null>(null)
   const [saveSuccess, setSaveSuccess] = useState(false)
+  const [alreadySaved, setAlreadySaved] = useState(false)
   const [showTableEditor, setShowTableEditor] = useState(false)
   const editorViewRef = useRef<EditorView | null>(null)
 
@@ -57,20 +58,41 @@ export default function MarkdownEditor({ tab }: Props) {
     setTabEditMode(tab.id, layout !== 'preview')
   }, [layout, tab.id, setTabEditMode])
 
+  // ── Show "저장됨 ✓" toast for any save of this file (workflow init, etc.) ──
+  useEffect(() => {
+    const handler = (e: Event) => {
+      const savedPath = (e as CustomEvent).detail as string
+      if (savedPath === tab.filePath) {
+        setSaveSuccess(true)
+        setTimeout(() => setSaveSuccess(false), 1500)
+      }
+    }
+    window.addEventListener('file-saved', handler)
+    return () => window.removeEventListener('file-saved', handler)
+  }, [tab.filePath])
+
   // ── Save file ─────────────────────────────────────────────────────────────
   const handleSave = useCallback(async (content?: string) => {
     const c = content ?? tab.content
+    // Nothing to save when called without explicit content and the tab isn't dirty.
+    // Show a distinct "이미 저장됨" toast instead of needlessly rewriting the file.
+    if (content === undefined && !tab.isDirty) {
+      setAlreadySaved(true)
+      setTimeout(() => setAlreadySaved(false), 1500)
+      return
+    }
     markRecentlySaved(tab.filePath)
     const result = await window.electronAPI.writeFile(tab.filePath, c)
     if (result.success) {
       markTabSaved(tab.id, c)
       setSaveSuccess(true)
       setTimeout(() => setSaveSuccess(false), 1500)
+      window.dispatchEvent(new CustomEvent('file-saved', { detail: tab.filePath }))
     } else {
       setSaveError(result.error || '저장 실패')
       setTimeout(() => setSaveError(null), 3000)
     }
-  }, [tab.filePath, tab.id, tab.content, markTabSaved])
+  }, [tab.filePath, tab.id, tab.content, tab.isDirty, markTabSaved])
 
   // ── Insert heading helper (for shortcuts) ────────────────────────────────
   const insertHeading = useCallback((prefix: string) => {
@@ -160,6 +182,7 @@ export default function MarkdownEditor({ tab }: Props) {
 
         {/* Status */}
         {saveSuccess && <span className="text-xs text-green-500 font-medium">저장됨 ✓</span>}
+        {alreadySaved && <span className="text-xs text-gray-500 font-medium">이미 저장됨 ✓</span>}
         {saveError && <span className="text-xs text-red-500 font-medium">{saveError}</span>}
         {tab.isDirty && !saveSuccess && (
           <span className="text-xs text-orange-400 font-medium">● 미저장</span>

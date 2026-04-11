@@ -196,6 +196,20 @@ export default function ProjectTree({ project, projectIndex, searchQuery, onOpen
     return () => window.removeEventListener('git-status-changed', handler)
   }, [project.path])
 
+  // Refresh git status whenever a file inside this project is saved.
+  // Without this the M/A indicators only updated on a manual refresh.
+  useEffect(() => {
+    const handler = (e: Event) => {
+      const savedPath = (e as CustomEvent).detail as string
+      if (!savedPath) return
+      const np = savedPath.replace(/\\/g, '/').toLowerCase()
+      const pp = project.path.replace(/\\/g, '/').toLowerCase()
+      if (np === pp || np.startsWith(pp + '/')) loadGitStatus()
+    }
+    window.addEventListener('file-saved', handler)
+    return () => window.removeEventListener('file-saved', handler)
+  }, [project.path])
+
   // Focus input when rename mode starts
   useEffect(() => {
     if (isRenaming) {
