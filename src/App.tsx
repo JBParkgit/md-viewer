@@ -36,7 +36,7 @@ export default function App() {
   // ── Initialize from electron-store ────────────────────────────────────────
   useEffect(() => {
     const init = async () => {
-      const [savedDark, savedSize, savedFont, savedFavs, savedRecent, savedProjects, savedTags, savedTagColors, savedProjectColors, savedSidebarCollapsed, savedSpellcheck, savedCurrentUser] = await Promise.all([
+      const [savedDark, savedSize, savedFont, savedFavs, savedRecent, savedProjects, savedTags, savedTagColors, savedProjectColors, savedSidebarCollapsed, savedSpellcheck, savedCurrentUser, savedOpenDirs] = await Promise.all([
         window.electronAPI.storeGet('darkMode'),
         window.electronAPI.storeGet('fontSize'),
         window.electronAPI.storeGet('fontFamily'),
@@ -49,6 +49,7 @@ export default function App() {
         window.electronAPI.storeGet('sidebarCollapsed'),
         window.electronAPI.storeGet('spellcheckEnabled'),
         window.electronAPI.storeGet('currentUser'),
+        window.electronAPI.storeGet('openDirs'),
       ])
 
       const dark = (savedDark as string) || 'system'
@@ -63,6 +64,7 @@ export default function App() {
       const sidebarCollapsed = (savedSidebarCollapsed as boolean) || false
       const spellcheckEnabled = (savedSpellcheck as boolean) ?? false
       const currentUser = (savedCurrentUser as string) || ''
+      const openDirs = (savedOpenDirs as Record<string, string[]>) || {}
 
       document.documentElement.style.setProperty('--md-font-size', `${size}px`)
       // Apply saved font family
@@ -105,6 +107,7 @@ export default function App() {
         sidebarCollapsed,
         spellcheckEnabled,
         currentUser,
+        openDirs,
       })
     }
     init()

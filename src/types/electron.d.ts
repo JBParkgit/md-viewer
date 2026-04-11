@@ -65,6 +65,7 @@ export interface ElectronAPI {
   getPathForFile: (file: File) => string
   showItemInFolder: (path: string) => Promise<void>
   openPath: (path: string) => Promise<string | null>
+  openInObsidian: (path: string) => Promise<{ success: boolean; error?: string }>
   startDrag: (filePath: string) => void
   copyImageToClipboard: (filePath: string) => Promise<{ success: boolean; error?: string }>
   registerMdAssociation: () => Promise<{ success: boolean; error?: string }>

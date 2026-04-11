@@ -393,6 +393,25 @@ export default function WorkflowBar({ tab, projectPath }: Props) {
           {meta.history.length > 0 && (
             <HistorySection history={meta.history} />
           )}
+
+          {/* Danger zone — remove workflow entirely */}
+          <div className="mt-2 pt-2 border-t border-gray-200/70 dark:border-gray-700/70 flex items-center justify-end">
+            <button
+              onClick={async () => {
+                const summary = `이 문서의 워크플로우를 완전히 제거합니다.\n\n` +
+                  `• 상태 / 작성자 / 기한 / 승인자 (${meta.approvers.length}명) 모두 삭제됩니다\n` +
+                  `• 이력 ${meta.history.length}건이 함께 사라집니다\n` +
+                  `• 본문과 태그 등 다른 내용은 그대로 유지됩니다\n\n` +
+                  `계속하시겠습니까?`
+                if (!window.confirm(summary)) return
+                await actions.clearWorkflow()
+              }}
+              className="px-2 py-0.5 rounded text-[10px] text-red-600 dark:text-red-400 border border-red-200 dark:border-red-800/60 hover:bg-red-50 dark:hover:bg-red-900/20"
+              title="이 문서에서 워크플로우 정보를 모두 제거합니다 (다른 frontmatter는 유지)"
+            >
+              🗑️ 워크플로우 제거
+            </button>
+          </div>
         </div>
       )}
     </div>

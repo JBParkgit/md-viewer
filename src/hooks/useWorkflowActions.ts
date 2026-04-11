@@ -5,6 +5,7 @@ import {
   applyDecision,
   createInitialWorkflow,
   parseWorkflow,
+  removeFrontmatterWorkflow,
   updateFrontmatterWorkflow,
   type WorkflowMeta,
 } from '../utils/frontmatter'
@@ -14,6 +15,7 @@ export interface UseWorkflowActions {
   savingState: string | null
   writeBack: (next: WorkflowMeta) => Promise<void>
   initWorkflow: () => Promise<void>
+  clearWorkflow: () => Promise<void>
   addPerson: (meta: WorkflowMeta, name: string) => Promise<void>
   removePerson: (meta: WorkflowMeta, name: string) => Promise<void>
   updateFields: (meta: WorkflowMeta, patch: Partial<Pick<WorkflowMeta, 'author' | 'dueDate' | 'created'>>) => Promise<void>
@@ -60,6 +62,27 @@ export function useWorkflowActions(filePath: string, projectPath: string): UseWo
     const next = createInitialWorkflow(currentUser || '')
     await writeBack(next)
   }, [currentUser, writeBack])
+
+  const clearWorkflow = useCallback(async () => {
+    const activeTab = tabs.find(t => t.filePath === filePath)
+    const content = activeTab?.content
+    if (content === undefined) return
+    setSavingState('제거 중...')
+    const updated = removeFrontmatterWorkflow(content)
+    markRecentlySaved(filePath)
+    const res = await window.electronAPI.writeFile(filePath, updated)
+    if (res.success) {
+      if (activeTab) markTabSaved(activeTab.id, updated)
+      // Drop from workflow index since the file no longer has workflow meta
+      useWorkflowStore.getState().removeFile(filePath)
+      setSavingState('제거됨')
+      setTimeout(() => setSavingState(null), 1200)
+      window.dispatchEvent(new CustomEvent('file-saved', { detail: filePath }))
+    } else {
+      setSavingState('제거 실패')
+      setTimeout(() => setSavingState(null), 2500)
+    }
+  }, [filePath, tabs, markTabSaved])
 
   const addPerson = useCallback(async (meta: WorkflowMeta, name: string) => {
     const trimmed = name.trim()
@@ -137,7 +160,7 @@ export function useWorkflowActions(filePath: string, projectPath: string): UseWo
     return { ok: true }
   }, [currentUser, writeBack])
 
-  return { savingState, writeBack, initWorkflow, addPerson, removePerson, updateFields, setStatus, requestReview, backToDraft, decide }
+  return { savingState, writeBack, initWorkflow, clearWorkflow, addPerson, removePerson, updateFields, setStatus, requestReview, backToDraft, decide }
 }
 
 /** Helper to derive whether the current user needs to act on this doc. */

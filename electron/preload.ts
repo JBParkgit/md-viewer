@@ -45,6 +45,7 @@ contextBridge.exposeInMainWorld('electronAPI', {
   cloneFolder: () => ipcRenderer.invoke('dialog:cloneFolder'),
   showItemInFolder: (path: string) => ipcRenderer.invoke('shell:showItemInFolder', path),
   openPath: (path: string) => ipcRenderer.invoke('shell:openPath', path),
+  openInObsidian: (path: string) => ipcRenderer.invoke('shell:openInObsidian', path),
   startDrag: (filePath: string) => ipcRenderer.send('native:startDrag', filePath),
   copyImageToClipboard: (filePath: string) => ipcRenderer.invoke('clipboard:copyImage', filePath),
   registerMdAssociation: () => ipcRenderer.invoke('shell:registerMdAssociation'),

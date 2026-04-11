@@ -247,10 +247,16 @@ export const useAppStore = create<AppStore>((set, get) => ({
   },
 
   removeProject: (projectId) => {
-    const { projects } = get()
+    const { projects, openDirs } = get()
     const updated = projects.filter(p => p.id !== projectId)
     set({ projects: updated })
     saveProjects(updated)
+    if (openDirs[projectId]) {
+      const nextOpenDirs = { ...openDirs }
+      delete nextOpenDirs[projectId]
+      window.electronAPI.storeSet('openDirs', nextOpenDirs)
+      set({ openDirs: nextOpenDirs })
+    }
   },
 
   renameProject: (projectId, newName) => {
@@ -305,7 +311,9 @@ export const useAppStore = create<AppStore>((set, get) => ({
       if (isOpen && !has) next = [...current, dirPath]
       else if (!isOpen && has) next = current.filter(p => p !== dirPath)
       else return s
-      return { openDirs: { ...s.openDirs, [projectId]: next } }
+      const updated = { ...s.openDirs, [projectId]: next }
+      window.electronAPI.storeSet('openDirs', updated)
+      return { openDirs: updated }
     })
   },
 

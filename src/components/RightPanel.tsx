@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { useAppStore } from '../stores/useAppStore'
-import { parseFrontmatterTags, parseWorkflow } from '../utils/frontmatter'
+import { parseAllTags, parseWorkflow } from '../utils/frontmatter'
 import WorkflowDocPanel from './WorkflowDocPanel'
 
 interface Props {
@@ -262,7 +262,7 @@ function RelatedPanel({ content, filePath, projectPath }: { content: string; fil
   const [related, setRelated] = useState<{ filePath: string; fileName: string; commonCount: number; tags: string[] }[]>([])
   const [loading, setLoading] = useState(true)
 
-  const currentTags = useMemo(() => parseFrontmatterTags(content), [content])
+  const currentTags = useMemo(() => parseAllTags(content), [content])
 
   useEffect(() => {
     if (!projectPath || currentTags.length === 0) { setLoading(false); return }

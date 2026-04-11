@@ -251,17 +251,6 @@ export default function Sidebar({ onOpenFile, onOpenFilePinned }: Props) {
   const [emptyContextMenu, setEmptyContextMenu] = useState<{ x: number; y: number } | null>(null)
   const sidebarRef = useRef<HTMLDivElement>(null)
 
-  // Keyboard shortcut: Ctrl+B to toggle sidebar
-  useEffect(() => {
-    const handler = (e: KeyboardEvent) => {
-      if ((e.ctrlKey || e.metaKey) && e.key === 'b') {
-        e.preventDefault()
-        toggleSidebar()
-      }
-    }
-    window.addEventListener('keydown', handler)
-    return () => window.removeEventListener('keydown', handler)
-  }, [toggleSidebar])
 
   // Full-text search across all projects
   useEffect(() => {
@@ -345,7 +334,7 @@ export default function Sidebar({ onOpenFile, onOpenFilePinned }: Props) {
         <button
           onClick={toggleSidebar}
           className="w-9 h-9 flex items-center justify-center rounded-md text-gray-400 dark:text-gray-500 hover:text-gray-600 dark:hover:text-gray-300 hover:bg-gray-200 dark:hover:bg-gray-800 transition-colors"
-          title={sidebarCollapsed ? '패널 열기 (Ctrl+B)' : '패널 닫기 (Ctrl+B)'}
+          title={sidebarCollapsed ? '패널 열기' : '패널 닫기'}
         >
           <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
             {sidebarCollapsed ? (

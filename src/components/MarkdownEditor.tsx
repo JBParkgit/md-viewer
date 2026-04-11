@@ -2,7 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { EditorView } from '@uiw/react-codemirror'
 import { useAppStore, type Tab } from '../stores/useAppStore'
 import { markRecentlySaved } from '../utils/recentSave'
-import { parseFrontmatterTags, updateFrontmatterTags } from '../utils/frontmatter'
+import { parseFrontmatterTags, stripFrontmatter, updateFrontmatterTags } from '../utils/frontmatter'
 import MarkdownView from './MarkdownView'
 import LiveEditor from './LiveEditor'
 import RightPanel from './RightPanel'
@@ -46,6 +46,29 @@ export default function MarkdownEditor({ tab }: Props) {
   const [saveError, setSaveError] = useState<string | null>(null)
   const [saveSuccess, setSaveSuccess] = useState(false)
   const [alreadySaved, setAlreadySaved] = useState(false)
+
+  // ── Word / character stats for status bar ──────────────────────────────
+  const stats = useMemo(() => {
+    const body = stripFrontmatter(tab.content)
+      // Strip markdown syntax so counts reflect readable content, not syntax noise
+      .replace(/```[\s\S]*?```/g, '')           // fenced code blocks
+      .replace(/`[^`]*`/g, '')                  // inline code
+      .replace(/!\[[^\]]*\]\([^)]*\)/g, '')     // image links
+      .replace(/\[([^\]]*)\]\([^)]*\)/g, '$1')  // md links → keep label
+      .replace(/\[\[([^\]|]+)(?:\|([^\]]+))?\]\]/g, (_, a, b) => b || a) // wiki links
+      .replace(/^#{1,6}\s+/gm, '')              // heading markers
+      .replace(/[*_~]+/g, '')                   // emphasis marks
+      .replace(/^>\s?/gm, '')                   // blockquote
+    const chars = body.length
+    const charsNoSpace = body.replace(/\s/g, '').length
+    // Word count: CJK characters count as 1 word each, else split by whitespace
+    const cjkMatches = body.match(/[\u4e00-\u9fff\u3040-\u30ff\uac00-\ud7af]/g)
+    const cjkCount = cjkMatches ? cjkMatches.length : 0
+    const nonCjk = body.replace(/[\u4e00-\u9fff\u3040-\u30ff\uac00-\ud7af]/g, ' ')
+    const wordCount = nonCjk.trim().split(/\s+/).filter(Boolean).length
+    const words = wordCount + cjkCount
+    return { chars, charsNoSpace, words }
+  }, [tab.content])
   const [showTableEditor, setShowTableEditor] = useState(false)
   const editorViewRef = useRef<EditorView | null>(null)
 
@@ -287,6 +310,19 @@ export default function MarkdownEditor({ tab }: Props) {
             mdFiles={mdFiles}
           />
         )}
+      </div>
+
+      {/* Status bar — word / character stats at the bottom */}
+      <div className="flex items-center gap-3 px-4 h-6 border-t border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-800/60 text-[10px] text-gray-500 dark:text-gray-400 flex-shrink-0 select-none">
+        <span title="단어 수 (한중일 문자는 1단어)">{stats.words.toLocaleString()} 단어</span>
+        <span className="text-gray-300 dark:text-gray-600">·</span>
+        <span title="문자 수 (공백 포함)">{stats.chars.toLocaleString()} 문자</span>
+        <span className="text-gray-300 dark:text-gray-600">·</span>
+        <span title="문자 수 (공백 제외)">{stats.charsNoSpace.toLocaleString()} 공백제외</span>
+        <div className="flex-1" />
+        <span className="text-gray-400 dark:text-gray-500 truncate" title={tab.filePath}>
+          {tab.filePath.replace(/\\/g, '/').split('/').pop()}
+        </span>
       </div>
 
       {/* Floating selection toolbar */}

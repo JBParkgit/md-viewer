@@ -18,6 +18,7 @@ interface StoreSchema {
   recentFiles: string[]
   fileTags: Record<string, string[]>
   currentUser: string
+  openDirs: Record<string, string[]>
 }
 
 const store = new Store<StoreSchema>({
@@ -29,6 +30,7 @@ const store = new Store<StoreSchema>({
     recentFiles: [],
     fileTags: {},
     currentUser: '',
+    openDirs: {},
   },
 })
 
@@ -476,6 +478,30 @@ ipcMain.handle('shell:openPath', async (_e, filePath: string) => {
   return err || null  // null = success, string = error message
 })
 
+// ── IPC: Open file in Obsidian via obsidian:// URI ──────────────────────────
+// Obsidian's URI scheme opens a file in whichever vault contains it.
+// Docs: https://help.obsidian.md/Concepts/Obsidian+URI
+// Important: Obsidian expects forward-slash paths, even on Windows. Passing
+// an encoded backslash (%5C) silently fails to match any vault.
+ipcMain.handle('shell:openInObsidian', async (_e, filePath: string) => {
+  try {
+    if (!existsSync(filePath)) {
+      return { success: false, error: `파일을 찾을 수 없습니다: ${filePath}` }
+    }
+    // Normalize to forward slashes, then encode each segment so spaces,
+    // Korean characters, etc. are valid URI components while the `/`
+    // structure remains intact.
+    const normalized = filePath.replace(/\\/g, '/')
+    const encoded = normalized.split('/').map(encodeURIComponent).join('/')
+    const uri = `obsidian://open?path=${encoded}`
+    console.log('[openInObsidian] URI:', uri)
+    await shell.openExternal(uri)
+    return { success: true }
+  } catch (err: unknown) {
+    return { success: false, error: err instanceof Error ? err.message : String(err) }
+  }
+})
+
 // ── IPC: Native drag to external apps ────────────────────────────────────────
 ipcMain.on('native:startDrag', (event, filePath: string) => {
   try {
@@ -593,7 +619,7 @@ ipcMain.handle('fs:listVideos', async (_e, dirPath: string) => {
 // ── IPC: Collect tags from all .md files in project ─────────────────────────
 const FM_REGEX = /^---\r?\n([\s\S]*?)\r?\n---/
 
-function extractTags(content: string): string[] {
+function extractFrontmatterTags(content: string): string[] {
   const match = content.match(FM_REGEX)
   if (!match) return []
   const yaml = match[1]
@@ -606,6 +632,48 @@ function extractTags(content: string): string[] {
     return listMatch[1].split('\n').map(l => l.replace(/^\s*-\s*/, '').trim().replace(/^['"]|['"]$/g, '')).filter(Boolean)
   }
   return []
+}
+
+/** Extract Obsidian-style inline `#tag` mentions from the document body,
+ *  while skipping fenced code blocks and markdown headings (which use `#`).
+ *  Supports nested tags like `#project/alpha` and Korean characters. */
+function extractInlineTags(content: string): string[] {
+  // Strip frontmatter first
+  const bodyWithoutFm = content.replace(FM_REGEX, '')
+  // Remove fenced code blocks so `#comment` in code isn't picked up
+  const stripped = bodyWithoutFm.replace(/```[\s\S]*?```/g, '').replace(/~~~[\s\S]*?~~~/g, '')
+  const found = new Set<string>()
+  // Process line by line so we can skip markdown heading lines (# Title)
+  for (const rawLine of stripped.split('\n')) {
+    const line = rawLine
+    // Skip pure heading lines
+    if (/^\s{0,3}#{1,6}\s+/.test(line)) continue
+    // Remove inline code spans within the line
+    const cleaned = line.replace(/`[^`]*`/g, '')
+    // Match #tag: letters, digits, Korean, `-`, `_`, `/` (for nested).
+    // Must be preceded by whitespace or start of string.
+    const tagRe = /(^|[\s([{,;:!?])#([\p{L}\p{N}_-]+(?:\/[\p{L}\p{N}_-]+)*)/gu
+    let m: RegExpExecArray | null
+    while ((m = tagRe.exec(cleaned)) !== null) {
+      const tag = m[2]
+      // Skip pure-numeric to avoid matching things like `#123` issue refs
+      if (/^\d+$/.test(tag)) continue
+      found.add(tag)
+    }
+  }
+  return [...found]
+}
+
+function extractTags(content: string): string[] {
+  const fm = extractFrontmatterTags(content)
+  const inline = extractInlineTags(content)
+  // Merge + dedupe, preserving frontmatter order first
+  const seen = new Set<string>(fm)
+  const merged = [...fm]
+  for (const t of inline) {
+    if (!seen.has(t)) { seen.add(t); merged.push(t) }
+  }
+  return merged
 }
 
 async function collectTags(dirPath: string, results: { filePath: string; fileName: string; tags: string[] }[], depth = 0) {

@@ -61,6 +61,39 @@ function replaceBlocks(
   return kept
 }
 
+/** Parse Obsidian-style inline `#tag` mentions from the document body.
+ *  Skips fenced code blocks, inline code spans, and markdown heading lines.
+ *  Supports nested tags (`#project/alpha`) and Korean characters. */
+export function parseInlineTags(content: string): string[] {
+  const bodyWithoutFm = content.replace(FM_REGEX, '')
+  const stripped = bodyWithoutFm.replace(/```[\s\S]*?```/g, '').replace(/~~~[\s\S]*?~~~/g, '')
+  const found = new Set<string>()
+  for (const rawLine of stripped.split('\n')) {
+    if (/^\s{0,3}#{1,6}\s+/.test(rawLine)) continue
+    const cleaned = rawLine.replace(/`[^`]*`/g, '')
+    const tagRe = /(^|[\s([{,;:!?])#([\p{L}\p{N}_-]+(?:\/[\p{L}\p{N}_-]+)*)/gu
+    let m: RegExpExecArray | null
+    while ((m = tagRe.exec(cleaned)) !== null) {
+      const tag = m[2]
+      if (/^\d+$/.test(tag)) continue
+      found.add(tag)
+    }
+  }
+  return [...found]
+}
+
+/** All tags for a document — frontmatter tags plus body `#tag` mentions. */
+export function parseAllTags(content: string): string[] {
+  const fm = parseFrontmatterTags(content)
+  const inline = parseInlineTags(content)
+  const seen = new Set(fm)
+  const merged = [...fm]
+  for (const t of inline) {
+    if (!seen.has(t)) { seen.add(t); merged.push(t) }
+  }
+  return merged
+}
+
 /** Parse tags from YAML frontmatter */
 export function parseFrontmatterTags(content: string): string[] {
   const match = content.match(FM_REGEX)
@@ -313,6 +346,19 @@ function serializeWorkflow(wf: WorkflowMeta): string {
     }
   }
   return lines.join('\n')
+}
+
+/** Remove all workflow fields from frontmatter while preserving everything
+ *  else (tags, custom fields, etc). If the resulting frontmatter is empty,
+ *  the entire `---` block is stripped. */
+export function removeFrontmatterWorkflow(content: string): string {
+  const match = content.match(FM_REGEX)
+  if (!match) return content
+  const blocks = parseYamlBlocks(match[1])
+  const kept = blocks.filter(b => !WORKFLOW_KEYS.has(b.key))
+  const newYaml = serializeYamlBlocks(kept)
+  if (!newYaml.trim()) return content.replace(FM_REGEX, '')
+  return content.replace(FM_REGEX, `---\n${newYaml}\n---\n`)
 }
 
 /** Update or insert workflow fields in frontmatter, preserving other fields
