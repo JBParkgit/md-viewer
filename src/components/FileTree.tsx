@@ -1,5 +1,8 @@
 import { useState, useRef, useMemo, useEffect } from 'react'
-import { useAppStore, PREDEFINED_TAGS } from '../stores/useAppStore'
+import { useAppStore } from '../stores/useAppStore'
+import { useWorkflowStore } from '../stores/useWorkflowStore'
+import { WORKFLOW_STATUS_ICONS, WORKFLOW_STATUS_COLORS } from '../utils/frontmatter'
+import FileHistoryModal from './FileHistoryModal'
 import { getFileGroup, FileTypeIcon } from '../utils/fileType'
 import type { FileNode } from '../types/electron'
 import type { GitStatusMap } from './ProjectTree'
@@ -94,14 +97,18 @@ function FileRow({ node, onOpenFile, onOpenFilePinned, searchQuery, depth, proje
       setLocalOpen(newVal)
     }
   }
-  const { favorites, addFavorite, removeFavorite, tabs, activeTabId, closeTab, fileTags, addFileTag, removeFileTag, setLastOpenedDir } = useAppStore()
+  const { favorites, addFavorite, removeFavorite, tabs, activeTabId, closeTab, setLastOpenedDir, markTabSaved } = useAppStore()
   const [contextMenu, setContextMenu] = useState<{ x: number; y: number } | null>(null)
-  const [showTagMenu, setShowTagMenu] = useState(false)
+  const [showHistory, setShowHistory] = useState(false)
   const [isDragOver, setIsDragOver] = useState(false)
   const [isRenaming, setIsRenaming] = useState(false)
   const [renameValue, setRenameValue] = useState('')
   const renameInputRef = useRef<HTMLInputElement>(null)
-  const nodeTags = fileTags[node.path] || []
+  const currentUser = useAppStore(s => s.currentUser)
+  const workflowEntry = useWorkflowStore(s => s.entries[node.path])
+  const workflowMeta = workflowEntry?.meta
+  const needsMyAction = !!workflowMeta && !!currentUser && workflowMeta.status === 'review' &&
+    workflowMeta.approvers.some(a => a.name === currentUser && a.status === 'pending')
 
   const isSelected = selection?.selectedPaths.has(node.path) ?? false
 
@@ -438,15 +445,17 @@ function FileRow({ node, onOpenFile, onOpenFilePinned, searchQuery, depth, proje
             <Highlighted text={node.name} query={searchQuery} />
           </span>
         )}
-        {nodeTags.map(tagId => {
-          const tag = PREDEFINED_TAGS.find(t => t.id === tagId)
-          if (!tag) return null
-          return (
-            <span key={tagId} className={`px-1 py-0 rounded text-[9px] leading-tight flex-shrink-0 ${tag.color}`}>
-              {tag.label}
-            </span>
-          )
-        })}
+        {workflowMeta && (
+          <span
+            className={`px-1 py-0 rounded text-[9px] leading-tight flex-shrink-0 ${WORKFLOW_STATUS_COLORS[workflowMeta.status]}`}
+            title={`워크플로우: ${workflowMeta.status}`}
+          >
+            {WORKFLOW_STATUS_ICONS[workflowMeta.status]}
+          </span>
+        )}
+        {needsMyAction && (
+          <span className="w-1.5 h-1.5 rounded-full bg-red-500 flex-shrink-0" title="내 액션 필요" />
+        )}
         {isFav && (
           <svg className="w-3 h-3 text-yellow-400 flex-shrink-0" fill="currentColor" viewBox="0 0 24 24">
             <path d="M11.049 2.927c.3-.921 1.603-.921 1.902 0l1.519 4.674a1 1 0 00.95.69h4.915c.969 0 1.371 1.24.588 1.81l-3.976 2.888a1 1 0 00-.363 1.118l1.518 4.674c.3.922-.755 1.688-1.538 1.118l-3.976-2.888a1 1 0 00-1.176 0l-3.976 2.888c-.783.57-1.838-.197-1.538-1.118l1.518-4.674a1 1 0 00-.363-1.118l-3.976-2.888c-.784-.57-.38-1.81.588-1.81h4.914a1 1 0 00.951-.69l1.519-4.674z" />
@@ -519,44 +528,17 @@ function FileRow({ node, onOpenFile, onOpenFilePinned, searchQuery, depth, proje
               </svg>
               {isFav ? '즐겨찾기 제거' : '즐겨찾기 추가'}
             </button>
-            <div className="my-1 border-t border-gray-100 dark:border-gray-700" />
-            <div className="relative">
+            {projectPath && (
               <button
-                onClick={() => setShowTagMenu(v => !v)}
+                onClick={() => { setContextMenu(null); setShowHistory(true) }}
                 className="w-full flex items-center gap-2 px-3 py-1.5 text-xs hover:bg-gray-100 dark:hover:bg-gray-700 text-left"
               >
-                <svg className="w-3.5 h-3.5 text-purple-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M7 7h.01M7 3h5c.512 0 1.024.195 1.414.586l7 7a2 2 0 010 2.828l-7 7a2 2 0 01-2.828 0l-7-7A1.994 1.994 0 013 12V7a4 4 0 014-4z" />
+                <svg className="w-3.5 h-3.5 text-blue-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
                 </svg>
-                태그 관리
-                <svg className="w-3 h-3 ml-auto text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
-                </svg>
+                📜 이 파일의 이력
               </button>
-              {showTagMenu && (
-                <div className="mt-0.5 mx-1 mb-1 bg-gray-50 dark:bg-gray-750 rounded-md border border-gray-100 dark:border-gray-600">
-                  {PREDEFINED_TAGS.map(tag => {
-                    const hasTag = nodeTags.includes(tag.id)
-                    return (
-                      <button
-                        key={tag.id}
-                        onClick={() => { hasTag ? removeFileTag(node.path, tag.id) : addFileTag(node.path, tag.id) }}
-                        className="w-full flex items-center gap-2 px-3 py-1.5 text-xs hover:bg-gray-100 dark:hover:bg-gray-700 text-left"
-                      >
-                        <span className={`w-3 h-3 rounded-sm flex items-center justify-center border ${hasTag ? 'bg-blue-500 border-blue-500 text-white' : 'border-gray-300 dark:border-gray-500'}`}>
-                          {hasTag && (
-                            <svg className="w-2 h-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={3} d="M5 13l4 4L19 7" />
-                            </svg>
-                          )}
-                        </span>
-                        <span className={`px-1.5 py-0.5 rounded text-[10px] ${tag.color}`}>{tag.label}</span>
-                      </button>
-                    )
-                  })}
-                </div>
-              )}
-            </div>
+            )}
             {(() => {
               const dot = getGitDot(node, gitStatusMap, projectPath)
               if (!dot || !projectPath) return null
@@ -572,7 +554,11 @@ function FileRow({ node, onOpenFile, onOpenFilePinned, searchQuery, depth, proje
                   <div className="my-1 border-t border-gray-100 dark:border-gray-700" />
                   {entry.worktree !== ' ' && entry.index !== '?' ? (
                     <button
-                      onClick={async () => { setContextMenu(null); await window.electronAPI.gitStage(projectPath, rel) }}
+                      onClick={async () => {
+                        setContextMenu(null)
+                        await window.electronAPI.gitStage(projectPath, rel)
+                        window.dispatchEvent(new CustomEvent('git-status-changed', { detail: projectPath }))
+                      }}
                       className="w-full flex items-center gap-2 px-3 py-1.5 text-xs hover:bg-gray-100 dark:hover:bg-gray-700 text-left"
                     >
                       <svg className="w-3.5 h-3.5 text-green-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -583,7 +569,11 @@ function FileRow({ node, onOpenFile, onOpenFilePinned, searchQuery, depth, proje
                   ) : null}
                   {entry.index !== ' ' && entry.index !== '?' ? (
                     <button
-                      onClick={async () => { setContextMenu(null); await window.electronAPI.gitUnstage(projectPath, rel) }}
+                      onClick={async () => {
+                        setContextMenu(null)
+                        await window.electronAPI.gitUnstage(projectPath, rel)
+                        window.dispatchEvent(new CustomEvent('git-status-changed', { detail: projectPath }))
+                      }}
                       className="w-full flex items-center gap-2 px-3 py-1.5 text-xs hover:bg-gray-100 dark:hover:bg-gray-700 text-left"
                     >
                       <svg className="w-3.5 h-3.5 text-orange-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -594,7 +584,11 @@ function FileRow({ node, onOpenFile, onOpenFilePinned, searchQuery, depth, proje
                   ) : null}
                   {entry.index === '?' ? (
                     <button
-                      onClick={async () => { setContextMenu(null); await window.electronAPI.gitStage(projectPath, rel) }}
+                      onClick={async () => {
+                        setContextMenu(null)
+                        await window.electronAPI.gitStage(projectPath, rel)
+                        window.dispatchEvent(new CustomEvent('git-status-changed', { detail: projectPath }))
+                      }}
                       className="w-full flex items-center gap-2 px-3 py-1.5 text-xs hover:bg-gray-100 dark:hover:bg-gray-700 text-left"
                     >
                       <svg className="w-3.5 h-3.5 text-green-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -608,7 +602,21 @@ function FileRow({ node, onOpenFile, onOpenFilePinned, searchQuery, depth, proje
                       onClick={async () => {
                         setContextMenu(null)
                         if (!window.confirm(`"${node.name}" 파일의 변경사항을 취소하시겠습니까?`)) return
-                        await window.electronAPI.gitDiscard(projectPath, rel)
+                        const res = await window.electronAPI.gitDiscard(projectPath, rel)
+                        if (!res.success) {
+                          alert(res.error || '변경 취소 실패')
+                          return
+                        }
+                        // Refresh git status indicators
+                        window.dispatchEvent(new CustomEvent('git-status-changed', { detail: projectPath }))
+                        // If this file is open in a tab, reload its content from disk
+                        const openTab = tabs.find(t => t.filePath === node.path)
+                        if (openTab) {
+                          const reloaded = await window.electronAPI.readFile(node.path)
+                          if (reloaded.success && reloaded.content !== undefined) {
+                            markTabSaved(openTab.id, reloaded.content)
+                          }
+                        }
                       }}
                       className="w-full flex items-center gap-2 px-3 py-1.5 text-xs hover:bg-red-50 dark:hover:bg-red-900/20 text-red-600 dark:text-red-400 text-left"
                     >
@@ -654,6 +662,23 @@ function FileRow({ node, onOpenFile, onOpenFilePinned, searchQuery, depth, proje
           </div>
         </>
       )}
+
+      {showHistory && projectPath && (() => {
+        const normProject = projectPath.replace(/\\/g, '/')
+        const normNode = node.path.replace(/\\/g, '/')
+        const pfx = normProject.endsWith('/') ? normProject : normProject + '/'
+        const rel = normNode.startsWith(pfx) ? normNode.slice(pfx.length) : null
+        if (!rel) return null
+        return (
+          <FileHistoryModal
+            filePath={node.path}
+            projectPath={projectPath}
+            relativePath={rel}
+            fileName={node.name}
+            onClose={() => setShowHistory(false)}
+          />
+        )
+      })()}
     </>
   )
 }

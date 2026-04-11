@@ -1,5 +1,7 @@
 import { useEffect, useCallback } from 'react'
 import { useAppStore, projectCounter, setProjectCounter } from './stores/useAppStore'
+import { registerCurrentUserGetter } from './utils/mdTemplates'
+import { useWorkflowStore } from './stores/useWorkflowStore'
 import Toolbar from './components/Toolbar'
 import TabBar from './components/TabBar'
 import Sidebar from './components/Sidebar'
@@ -11,7 +13,11 @@ import VideoPlayer from './components/VideoPlayer'
 import WelcomeScreen from './components/WelcomeScreen'
 import KanbanBoard from './components/KanbanBoard'
 import CalendarView from './components/CalendarView'
+import WorkflowBoard from './components/WorkflowBoard'
 import { isRecentlySaved } from './utils/recentSave'
+
+// Allow mdTemplates to resolve the current user (for {{author}}) without a circular import
+registerCurrentUserGetter(() => useAppStore.getState().currentUser)
 
 export default function App() {
   const {
@@ -30,7 +36,7 @@ export default function App() {
   // ── Initialize from electron-store ────────────────────────────────────────
   useEffect(() => {
     const init = async () => {
-      const [savedDark, savedSize, savedFont, savedFavs, savedRecent, savedProjects, savedTags, savedTagColors, savedProjectColors, savedSidebarCollapsed, savedSpellcheck] = await Promise.all([
+      const [savedDark, savedSize, savedFont, savedFavs, savedRecent, savedProjects, savedTags, savedTagColors, savedProjectColors, savedSidebarCollapsed, savedSpellcheck, savedCurrentUser] = await Promise.all([
         window.electronAPI.storeGet('darkMode'),
         window.electronAPI.storeGet('fontSize'),
         window.electronAPI.storeGet('fontFamily'),
@@ -42,6 +48,7 @@ export default function App() {
         window.electronAPI.storeGet('projectColors'),
         window.electronAPI.storeGet('sidebarCollapsed'),
         window.electronAPI.storeGet('spellcheckEnabled'),
+        window.electronAPI.storeGet('currentUser'),
       ])
 
       const dark = (savedDark as string) || 'system'
@@ -55,6 +62,7 @@ export default function App() {
       const projectColors = (savedProjectColors as Record<string, number>) || {}
       const sidebarCollapsed = (savedSidebarCollapsed as boolean) || false
       const spellcheckEnabled = (savedSpellcheck as boolean) ?? false
+      const currentUser = (savedCurrentUser as string) || ''
 
       document.documentElement.style.setProperty('--md-font-size', `${size}px`)
       // Apply saved font family
@@ -96,10 +104,28 @@ export default function App() {
         projectColors,
         sidebarCollapsed,
         spellcheckEnabled,
+        currentUser,
       })
     }
     init()
   }, [])
+
+  // ── Workflow index: scan all projects when project list changes ──────────
+  useEffect(() => {
+    if (projects.length === 0) return
+    useWorkflowStore.getState().scanProjects(projects.map(p => p.path))
+  }, [projects])
+
+  // Refresh workflow entries when directories change on disk (file created/removed/edited externally)
+  useEffect(() => {
+    const unsub = window.electronAPI.onDirChanged((changedPath) => {
+      const matchingProject = projects.find(p => changedPath === p.path || changedPath.startsWith(p.path))
+      if (matchingProject) {
+        useWorkflowStore.getState().scanProject(matchingProject.path)
+      }
+    })
+    return unsub
+  }, [projects])
 
   // ── File change watcher ───────────────────────────────────────────────────
   // Ignore file-change events for files recently saved by the app itself
@@ -255,12 +281,14 @@ export default function App() {
           onOpenFilePinned={(p, n) => openFile(p, n, false)}
         />
         <div className="flex-1 flex flex-col overflow-hidden">
-          {sidebarTab !== 'kanban' && sidebarTab !== 'calendar' && <TabBar />}
+          {sidebarTab !== 'kanban' && sidebarTab !== 'calendar' && sidebarTab !== 'workflow' && <TabBar />}
           <main className="flex-1 overflow-hidden">
           {sidebarTab === 'calendar' ? (
             <CalendarView onOpenFile={(p, n) => { useAppStore.getState().setSidebarTab('tree'); openFile(p, n, false) }} />
           ) : sidebarTab === 'kanban' ? (
             <KanbanBoard onOpenFile={(p, n) => { useAppStore.getState().setSidebarTab('tree'); openFile(p, n, false) }} />
+          ) : sidebarTab === 'workflow' ? (
+            <WorkflowBoard onOpenFile={(p, n) => { useAppStore.getState().setSidebarTab('tree'); openFile(p, n, false) }} />
           ) : activeTab ? (
             activeTab.fileType === 'image'
               ? <ImageViewer tab={activeTab} onOpenFile={(p, n) => openFile(p, n, true)} />

@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef, useCallback } from 'react'
+import { useState, useEffect, useRef, useCallback, useMemo } from 'react'
 import { useAppStore } from '../stores/useAppStore'
 import ProjectTree from './ProjectTree'
 import ImageGallery from './ImageGallery'
@@ -6,6 +6,8 @@ import TagPanel from './TagPanel'
 import GitPanel from './GitPanel'
 import CalendarPanel from './CalendarPanel'
 import DocsPanel from './DocsPanel'
+import WorkflowPanel from './WorkflowPanel'
+import { useWorkflowStore } from '../stores/useWorkflowStore'
 import type { SearchResult } from '../types/electron'
 
 interface Props {
@@ -171,6 +173,15 @@ const TABS = [
     ),
   },
   {
+    id: 'workflow' as const,
+    title: '승인 워크플로우',
+    icon: (
+      <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.7} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
+      </svg>
+    ),
+  },
+  {
     id: 'kanban' as const,
     title: '칸반 보드',
     icon: (
@@ -219,6 +230,18 @@ export default function Sidebar({ onOpenFile, onOpenFilePinned }: Props) {
     setSidebarCollapsed,
     toggleSidebar,
   } = useAppStore()
+
+  const currentUser = useAppStore(s => s.currentUser)
+  const workflowEntries = useWorkflowStore(s => s.entries)
+  const receivedCount = useMemo(() => {
+    if (!currentUser) return 0
+    let n = 0
+    for (const e of Object.values(workflowEntries)) {
+      if (e.meta.status !== 'review') continue
+      if (e.meta.approvers.some(a => a.name === currentUser && a.status === 'pending')) n++
+    }
+    return n
+  }, [workflowEntries, currentUser])
 
   const [fullTextResults, setFullTextResults] = useState<SearchResult[]>([])
   const [isSearching, setIsSearching] = useState(false)
@@ -307,6 +330,11 @@ export default function Sidebar({ onOpenFile, onOpenFilePinned }: Props) {
               <div className="absolute left-0 top-1.5 bottom-1.5 w-0.5 bg-blue-500 rounded-r" />
             )}
             {tab.icon}
+            {tab.id === 'workflow' && receivedCount > 0 && (
+              <span className="absolute top-0.5 right-0.5 min-w-[14px] h-[14px] px-1 flex items-center justify-center rounded-full bg-red-500 text-white text-[9px] font-bold">
+                {receivedCount > 9 ? '9+' : receivedCount}
+              </span>
+            )}
           </button>
         ))}
 
@@ -648,6 +676,11 @@ export default function Sidebar({ onOpenFile, onOpenFilePinned }: Props) {
                 })
               )}
             </div>
+          )}
+
+          {/* ── 워크플로우 탭 ── */}
+          {sidebarTab === 'workflow' && (
+            <WorkflowPanel onOpenFile={onOpenFile} />
           )}
 
           {/* ── 캘린더 탭 ── */}

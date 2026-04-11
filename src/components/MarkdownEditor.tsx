@@ -9,6 +9,7 @@ import RightPanel from './RightPanel'
 import TableEditor from './TableEditor'
 import FloatingToolbar from './FloatingToolbar'
 import EditorContextMenu from './EditorContextMenu'
+import WorkflowBar from './WorkflowBar'
 
 interface Props {
   tab: Tab
@@ -200,6 +201,9 @@ export default function MarkdownEditor({ tab }: Props) {
 
       {/* Tag bar */}
       <TagBar tab={tab} onSave={handleSave} />
+
+      {/* Workflow bar — sticky at top, shows approval flow inline */}
+      <WorkflowBar tab={tab} projectPath={projectPath} />
 
       {/* File changed on disk banner */}
       {tab.fileChangedOnDisk && (

@@ -68,9 +68,13 @@ interface AppStore {
   lastOpenedDir: Record<string, string>
   setLastOpenedDir: (projectId: string, dirPath: string) => void
 
+  // Expanded folder paths per project (persisted across sidebar tab switches)
+  openDirs: Record<string, string[]>
+  toggleOpenDir: (projectId: string, dirPath: string, isOpen: boolean) => void
+
   // Sidebar tab
-  sidebarTab: 'tree' | 'favorites' | 'recent' | 'gallery' | 'tags' | 'docs' | 'git' | 'kanban' | 'calendar'
-  setSidebarTab: (tab: 'tree' | 'favorites' | 'recent' | 'gallery' | 'tags' | 'docs' | 'git' | 'kanban' | 'calendar') => void
+  sidebarTab: 'tree' | 'favorites' | 'recent' | 'gallery' | 'tags' | 'docs' | 'git' | 'kanban' | 'calendar' | 'workflow'
+  setSidebarTab: (tab: 'tree' | 'favorites' | 'recent' | 'gallery' | 'tags' | 'docs' | 'git' | 'kanban' | 'calendar' | 'workflow') => void
   gitSelectedProject: string | null
   setGitSelectedProject: (path: string | null) => void
   kanbanProjectPath: string | null
@@ -117,8 +121,12 @@ interface AppStore {
   setShowTOC: (show: boolean) => void
   spellcheckEnabled: boolean
   setSpellcheckEnabled: (enabled: boolean) => void
-  rightPanelTab: 'toc' | 'links' | 'backlinks' | 'related'
-  setRightPanelTab: (tab: 'toc' | 'links' | 'backlinks' | 'related') => void
+  rightPanelTab: 'toc' | 'links' | 'backlinks' | 'related' | 'workflow'
+  setRightPanelTab: (tab: 'toc' | 'links' | 'backlinks' | 'related' | 'workflow') => void
+
+  // Current user (for workflow author / reviewer identity)
+  currentUser: string
+  setCurrentUser: (name: string) => void
 }
 
 let tabCounter = 0
@@ -287,6 +295,20 @@ export const useAppStore = create<AppStore>((set, get) => ({
     set(s => ({ lastOpenedDir: { ...s.lastOpenedDir, [projectId]: dirPath } }))
   },
 
+  // ── Expanded folder paths per project ────────────────────────────────────
+  openDirs: {},
+  toggleOpenDir: (projectId, dirPath, isOpen) => {
+    set(s => {
+      const current = s.openDirs[projectId] || []
+      const has = current.includes(dirPath)
+      let next: string[]
+      if (isOpen && !has) next = [...current, dirPath]
+      else if (!isOpen && has) next = current.filter(p => p !== dirPath)
+      else return s
+      return { openDirs: { ...s.openDirs, [projectId]: next } }
+    })
+  },
+
   // ── Sidebar tab ───────────────────────────────────────────────────────────
   sidebarTab: 'tree',
   setSidebarTab: (tab) => set({ sidebarTab: tab }),
@@ -435,4 +457,11 @@ export const useAppStore = create<AppStore>((set, get) => ({
 
   rightPanelTab: 'toc',
   setRightPanelTab: (tab) => set({ rightPanelTab: tab }),
+
+  // ── Current user ──────────────────────────────────────────────────────────
+  currentUser: '',
+  setCurrentUser: (name) => {
+    window.electronAPI.storeSet('currentUser', name)
+    set({ currentUser: name })
+  },
 }))

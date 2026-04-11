@@ -29,9 +29,11 @@ export default function ProjectTree({ project, projectIndex, searchQuery, onOpen
   const toggleProjectCollapsed = useAppStore(s => s.toggleProjectCollapsed)
   const removeProject = useAppStore(s => s.removeProject)
   const renameProject = useAppStore(s => s.renameProject)
+  const openDirsList = useAppStore(s => s.openDirs[project.id])
+  const toggleOpenDirAction = useAppStore(s => s.toggleOpenDir)
+  const openDirs = useMemo(() => new Set(openDirsList || []), [openDirsList])
   const [nodes, setNodes] = useState<FileNode[]>([])
   const [loading, setLoading] = useState(false)
-  const [openDirs, setOpenDirs] = useState<Set<string>>(new Set())
   const [gitBranch, setGitBranch] = useState<string | null>(null)
   const [gitStatusMap, setGitStatusMap] = useState<GitStatusMap>({})
   const [gitChangedCount, setGitChangedCount] = useState(0)
@@ -84,12 +86,7 @@ export default function ProjectTree({ project, projectIndex, searchQuery, onOpen
   }), [selectedPaths, lastClickedPath, handleSelect])
 
   const toggleDir = (path: string, isOpen: boolean) => {
-    setOpenDirs(prev => {
-      const next = new Set(prev)
-      if (isOpen) next.add(path)
-      else next.delete(path)
-      return next
-    })
+    toggleOpenDirAction(project.id, path, isOpen)
   }
   const [contextMenu, setContextMenu] = useState<{ x: number; y: number } | null>(null)
   const [isRenaming, setIsRenaming] = useState(false)

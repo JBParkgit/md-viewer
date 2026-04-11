@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { useAppStore } from '../stores/useAppStore'
-import { parseFrontmatterTags } from '../utils/frontmatter'
+import { parseFrontmatterTags, parseWorkflow } from '../utils/frontmatter'
+import WorkflowDocPanel from './WorkflowDocPanel'
 
 interface Props {
   content: string
@@ -367,11 +368,15 @@ export default function RightPanel({ content, filePath, projectPath }: Props) {
     }).catch(() => {})
   }, [filePath, projectPath, currentFileName, currentNameNoExt])
 
+  const workflowMeta = useMemo(() => parseWorkflow(content), [content])
+  const workflowBadge = workflowMeta ? (workflowMeta.status === 'review' ? '!' : null) : null
+
   const tabs = [
     { id: 'toc' as const, label: '목차' },
     { id: 'links' as const, label: '링크', badge: outgoingCount || null },
     { id: 'backlinks' as const, label: '백링크', badge: backlinkCount },
-    { id: 'related' as const, label: '관련문서' },
+    { id: 'related' as const, label: '관련' },
+    { id: 'workflow' as const, label: '승인', badge: workflowBadge as number | string | null },
   ]
 
   return (
@@ -389,9 +394,11 @@ export default function RightPanel({ content, filePath, projectPath }: Props) {
             }`}
           >
             {tab.label}
-            {tab.badge !== undefined && tab.badge !== null && tab.badge > 0 && (
-              <span className="ml-0.5 inline-flex items-center justify-center w-3.5 h-3.5 rounded-full bg-blue-500 text-white text-[8px] font-bold">
-                {tab.badge > 9 ? '9+' : tab.badge}
+            {tab.badge !== undefined && tab.badge !== null && (typeof tab.badge === 'number' ? tab.badge > 0 : !!tab.badge) && (
+              <span className={`ml-0.5 inline-flex items-center justify-center w-3.5 h-3.5 rounded-full text-white text-[8px] font-bold ${
+                typeof tab.badge === 'string' ? 'bg-red-500' : 'bg-blue-500'
+              }`}>
+                {typeof tab.badge === 'number' ? (tab.badge > 9 ? '9+' : tab.badge) : tab.badge}
               </span>
             )}
           </button>
@@ -409,6 +416,9 @@ export default function RightPanel({ content, filePath, projectPath }: Props) {
         )}
         {rightPanelTab === 'related' && (
           <RelatedPanel content={content} filePath={filePath} projectPath={projectPath} />
+        )}
+        {rightPanelTab === 'workflow' && (
+          <WorkflowDocPanel content={content} filePath={filePath} projectPath={projectPath} />
         )}
       </div>
     </div>

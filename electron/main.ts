@@ -17,6 +17,7 @@ interface StoreSchema {
   favorites: string[]
   recentFiles: string[]
   fileTags: Record<string, string[]>
+  currentUser: string
 }
 
 const store = new Store<StoreSchema>({
@@ -27,11 +28,48 @@ const store = new Store<StoreSchema>({
     favorites: [],
     recentFiles: [],
     fileTags: {},
+    currentUser: '',
   },
 })
 
 let mainWindow: BrowserWindow | null = null
 let watchers: Map<string, ReturnType<typeof chokidar.watch>> = new Map()
+
+// Tracks files that the app itself just wrote, so the file watcher can suppress
+// the resulting `change` event instead of incorrectly reporting it as an
+// external modification. Keys are normalized paths; values are expiry timestamps.
+const recentSelfWrites = new Map<string, number>()
+const SELF_WRITE_SUPPRESS_MS = 5000
+
+function normalizePath(p: string): string {
+  return p.replace(/\\/g, '/').toLowerCase()
+}
+
+function markSelfWrite(filePath: string) {
+  const key = normalizePath(filePath)
+  recentSelfWrites.set(key, Date.now() + SELF_WRITE_SUPPRESS_MS)
+}
+
+function consumeSelfWrite(filePath: string): boolean {
+  const key = normalizePath(filePath)
+  const expiry = recentSelfWrites.get(key)
+  if (expiry === undefined) return false
+  if (expiry < Date.now()) {
+    recentSelfWrites.delete(key)
+    return false
+  }
+  // Don't delete on consume — multiple chokidar events for one write should
+  // all be suppressed within the window. Cleanup happens on expiry.
+  return true
+}
+
+// Periodic cleanup of expired entries.
+setInterval(() => {
+  const now = Date.now()
+  for (const [key, expiry] of recentSelfWrites) {
+    if (expiry < now) recentSelfWrites.delete(key)
+  }
+}, 10000).unref?.()
 
 function createWindow() {
   mainWindow = new BrowserWindow({
@@ -271,6 +309,9 @@ ipcMain.handle('fs:readFile', async (_e, filePath: string) => {
 // ── IPC: Write File ──────────────────────────────────────────────────────────
 ipcMain.handle('fs:writeFile', async (_e, filePath: string, content: string) => {
   try {
+    // Mark BEFORE the write so the chokidar `change` event (which fires
+    // immediately after the disk flush) is suppressed.
+    markSelfWrite(filePath)
     await writeFile(filePath, content, 'utf-8')
     return { success: true }
   } catch (err: unknown) {
@@ -343,6 +384,7 @@ ipcMain.handle('fs:watchFile', (_e, filePath: string) => {
   if (watchers.has(filePath)) return
   const watcher = chokidar.watch(filePath, { ignoreInitial: true, usePolling: false })
   watcher.on('change', () => {
+    if (consumeSelfWrite(filePath)) return
     mainWindow?.webContents.send('fs:fileChanged', filePath)
   })
   watchers.set(filePath, watcher)
@@ -792,9 +834,19 @@ ipcMain.handle('dialog:cloneFolder', async () => {
 })
 
 // ── IPC: Git Operations ─────────────────────────────────────────────────────
+// Force UTF-8 output so Korean (and other multi-byte) author names, commit
+// messages, and file contents don't come back as mojibake on systems whose
+// locale defaults git to legacy codepages (e.g. CP949 on Korean Windows).
+const GIT_UTF8_FLAGS = ['-c', 'i18n.logOutputEncoding=UTF-8', '-c', 'i18n.commitEncoding=UTF-8']
+
 function gitExec(args: string[], cwd: string): Promise<{ success: boolean; output?: string; error?: string }> {
   return new Promise((resolve) => {
-    execFile('git', args, { cwd, timeout: 30000, shell: true }, (err, stdout, stderr) => {
+    execFile('git', [...GIT_UTF8_FLAGS, ...args], {
+      cwd,
+      timeout: 30000,
+      shell: true,
+      env: { ...process.env, LC_ALL: 'C.UTF-8', LANG: 'C.UTF-8' },
+    }, (err, stdout, stderr) => {
       if (err) {
         resolve({ success: false, error: stderr.trim() || err.message })
       } else {
@@ -895,6 +947,27 @@ ipcMain.handle('git:push', async (_e, cwd: string) => {
 
 ipcMain.handle('git:revert', async (_e, cwd: string, hash: string) => {
   return gitExec(['revert', '--no-edit', hash], cwd)
+})
+
+// ── Per-file history operations ─────────────────────────────────────────────
+// List the commits that touched a specific file. Tab-separated to avoid the
+// `|` character being parsed as a shell pipe by cmd.exe under shell: true.
+// Output rows: "<hash>\t<authorDate>\t<author>\t<subject>"
+ipcMain.handle('git:fileLog', async (_e, cwd: string, relativePath: string) => {
+  return gitExec(
+    ['log', '--pretty=format:%h%x09%ad%x09%an%x09%s', '--date=short', '--', relativePath],
+    cwd,
+  )
+})
+
+// Read the contents of a specific file at a specific commit (for preview).
+ipcMain.handle('git:fileShow', async (_e, cwd: string, hash: string, relativePath: string) => {
+  return gitExec(['show', `${hash}:${relativePath}`], cwd)
+})
+
+// Restore a specific file to its state at a given commit. Stages the change.
+ipcMain.handle('git:checkoutFileAtCommit', async (_e, cwd: string, hash: string, relativePath: string) => {
+  return gitExec(['checkout', hash, '--', relativePath], cwd)
 })
 
 ipcMain.handle('git:remoteAdd', async (_e, cwd: string, url: string) => {

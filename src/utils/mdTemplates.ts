@@ -1,3 +1,13 @@
+// Lazy access to currentUser to avoid a hard circular import with useAppStore.
+// Set by the store on initialization; safe to call from any template generate().
+let currentUserGetter: () => string = () => ''
+export function registerCurrentUserGetter(getter: () => string) {
+  currentUserGetter = getter
+}
+function getCurrentUser(): string {
+  try { return currentUserGetter() } catch { return '' }
+}
+
 export interface MdTemplate {
   id: string
   name: string
@@ -27,6 +37,33 @@ const DEFAULT_TEMPLATES: DefaultTemplate[] = [
     category: '기본',
     icon: '📄',
     body: `# {{title}}\n\n`,
+  },
+  {
+    fileName: '워크플로우초안.md',
+    name: '워크플로우 초안',
+    category: '승인 워크플로우',
+    icon: '📝',
+    body: `---
+status: draft
+author: {{author}}
+created: {{date}}
+approvers: []
+---
+
+# {{title}}
+
+## 개요
+
+
+## 상세 내용
+
+
+## 참고 자료
+-
+
+---
+*이 문서는 초안입니다. 상단 바에서 승인자를 지정한 뒤 "🚀 리뷰 요청"을 보내세요.*
+`,
   },
   {
     fileName: '회의록.md',
@@ -741,6 +778,7 @@ export async function loadCustomTemplates(projectPath: string): Promise<MdTempla
           return body
             .replace(/\{\{title\}\}/g, title)
             .replace(/\{\{date\}\}/g, new Date().toISOString().slice(0, 10))
+            .replace(/\{\{author\}\}/g, getCurrentUser())
         },
       })
     }

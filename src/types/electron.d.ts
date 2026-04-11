@@ -83,6 +83,9 @@ export interface ElectronAPI {
   gitPull: (cwd: string) => Promise<{ success: boolean; output?: string; error?: string }>
   gitPush: (cwd: string) => Promise<{ success: boolean; output?: string; error?: string }>
   gitRevert: (cwd: string, hash: string) => Promise<{ success: boolean; output?: string; error?: string }>
+  gitFileLog: (cwd: string, relativePath: string) => Promise<{ success: boolean; output?: string; error?: string }>
+  gitFileShow: (cwd: string, hash: string, relativePath: string) => Promise<{ success: boolean; output?: string; error?: string }>
+  gitCheckoutFileAtCommit: (cwd: string, hash: string, relativePath: string) => Promise<{ success: boolean; output?: string; error?: string }>
   gitRemoteAdd: (cwd: string, url: string) => Promise<{ success: boolean; output?: string; error?: string }>
   gitRemoteGet: (cwd: string) => Promise<{ success: boolean; output?: string; error?: string }>
   gitAhead: (cwd: string) => Promise<{ success: boolean; output?: string; error?: string }>
