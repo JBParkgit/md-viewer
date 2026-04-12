@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useCallback } from 'react'
 import { useAppStore } from '../stores/useAppStore'
 
 const TAG_COLORS = [
@@ -40,23 +40,36 @@ export default function TagPanel({ onOpenFile }: Props) {
   const [tagSearch, setTagSearch] = useState('')
 
   // Collect tags from all projects
-  useEffect(() => {
+  const loadTags = useCallback(async () => {
     if (projects.length === 0) { setTagFiles([]); return }
-    let cancelled = false
     setLoading(true)
-    const load = async () => {
-      const all: TagFile[] = []
-      for (const project of projects) {
-        try {
-          const results = await window.electronAPI.collectTags(project.path)
-          all.push(...results)
-        } catch {}
-      }
-      if (!cancelled) { setTagFiles(all); setLoading(false) }
+    const all: TagFile[] = []
+    for (const project of projects) {
+      try {
+        const results = await window.electronAPI.collectTags(project.path)
+        all.push(...results)
+      } catch {}
     }
-    load()
-    return () => { cancelled = true }
+    setTagFiles(all)
+    setLoading(false)
   }, [projects])
+
+  useEffect(() => { loadTags() }, [loadTags])
+
+  // Re-scan tags whenever any file is saved (so new body `#tags` appear immediately)
+  useEffect(() => {
+    let timeout: ReturnType<typeof setTimeout> | null = null
+    const handler = () => {
+      if (timeout) clearTimeout(timeout)
+      // Debounce so rapid consecutive saves only trigger one scan
+      timeout = setTimeout(() => { loadTags() }, 300)
+    }
+    window.addEventListener('file-saved', handler)
+    return () => {
+      window.removeEventListener('file-saved', handler)
+      if (timeout) clearTimeout(timeout)
+    }
+  }, [loadTags])
 
   // Build tag → count map
   const tagMap = new Map<string, number>()

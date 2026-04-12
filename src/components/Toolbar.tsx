@@ -78,7 +78,7 @@ export default function Toolbar() {
     {
       label: '도움말',
       items: [
-        { label: 'Docuflow v1.0', action: () => {} },
+        { label: 'Docuflow v2.0', action: () => {} },
       ],
     },
   ]

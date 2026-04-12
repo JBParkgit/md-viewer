@@ -365,12 +365,27 @@ export default function LiveEditor({ tab, onSave, onChange, editorViewRef, onScr
     }
   }, [])
 
-  // Convert single newlines to double newlines on paste (so preview shows line breaks)
-  const pasteHandler = useMemo(() => EditorView.clipboardInputFilter.of((text) => {
-    const hasDoubleNewlines = text.includes('\n\n')
-    const hasSingleNewlines = text.includes('\n')
-    if (hasSingleNewlines && !hasDoubleNewlines) {
-      return text.replace(/\n/g, '\n\n')
+  // Normalize whitespace from clipboard pastes. This handles two common cases:
+  //   1) Pastes from rich-text sources (ChatGPT, Gemini, web pages) often contain
+  //      3+ consecutive newlines and trailing spaces from HTML→text conversion.
+  //      We collapse those into clean paragraph breaks.
+  //   2) Pastes from plain text sources sometimes use only single newlines,
+  //      which markdown ignores. We promote them to double newlines so paragraph
+  //      breaks render correctly.
+  const pasteHandler = useMemo(() => EditorView.clipboardInputFilter.of((raw) => {
+    let text = raw
+    // Normalize line endings
+    text = text.replace(/\r\n?/g, '\n')
+    // Strip trailing whitespace before each newline
+    text = text.replace(/[ \t]+\n/g, '\n')
+    // Collapse 3+ consecutive newlines into a paragraph break (\n\n)
+    text = text.replace(/\n{3,}/g, '\n\n')
+    // Trim leading/trailing blank lines from the pasted block
+    text = text.replace(/^\n+|\n+$/g, '')
+    // If the pasted text has no paragraph breaks at all but does have single
+    // newlines, promote them so markdown paragraphs render correctly.
+    if (!text.includes('\n\n') && text.includes('\n')) {
+      text = text.replace(/\n/g, '\n\n')
     }
     return text
   }), [])

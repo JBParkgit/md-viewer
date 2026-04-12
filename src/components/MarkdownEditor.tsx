@@ -2,7 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { EditorView } from '@uiw/react-codemirror'
 import { useAppStore, type Tab } from '../stores/useAppStore'
 import { markRecentlySaved } from '../utils/recentSave'
-import { parseFrontmatterTags, stripFrontmatter, updateFrontmatterTags } from '../utils/frontmatter'
+import { parseFrontmatterTags, parseInlineTags, stripFrontmatter, updateFrontmatterTags } from '../utils/frontmatter'
 import MarkdownView from './MarkdownView'
 import LiveEditor from './LiveEditor'
 import RightPanel from './RightPanel'
@@ -476,6 +476,8 @@ export default function MarkdownEditor({ tab }: Props) {
 // ── Tag Bar ───────────────────────────────────────────────────────────────
 function TagBar({ tab, onSave }: { tab: Tab; onSave: (content: string) => void }) {
   const tags = parseFrontmatterTags(tab.content)
+  // Body `#tag` mentions — read-only (user edits them in the document body itself)
+  const inlineTags = parseInlineTags(tab.content).filter(t => !tags.includes(t))
   const tagColors = useAppStore(s => s.tagColors)
   const projects = useAppStore(s => s.projects)
   const [inputVisible, setInputVisible] = useState(false)
@@ -592,6 +594,15 @@ function TagBar({ tab, onSave }: { tab: Tab; onSave: (content: string) => void }
           </span>
         )
       })}
+      {inlineTags.map(tag => (
+        <span
+          key={`inline-${tag}`}
+          className="inline-flex items-center gap-0.5 px-2 py-0.5 rounded-full text-xs bg-gray-100 dark:bg-gray-700/70 text-gray-600 dark:text-gray-300 border border-dashed border-gray-300 dark:border-gray-600"
+          title="본문 내 #태그 (문서에서 직접 편집하세요)"
+        >
+          #{tag}
+        </span>
+      ))}
       {inputVisible ? (
         <div className="relative">
           <input
