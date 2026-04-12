@@ -1,16 +1,10 @@
-import { useEffect, useCallback } from 'react'
+import { useEffect, useCallback, useState, useRef } from 'react'
 import { useAppStore, projectCounter, setProjectCounter } from './stores/useAppStore'
 import { registerCurrentUserGetter } from './utils/mdTemplates'
 import { useWorkflowStore } from './stores/useWorkflowStore'
 import Toolbar from './components/Toolbar'
-import TabBar from './components/TabBar'
 import Sidebar from './components/Sidebar'
-import MarkdownEditor from './components/MarkdownEditor'
-import ImageViewer from './components/ImageViewer'
-import PdfViewer from './components/PdfViewer'
-import DocxViewer from './components/DocxViewer'
-import VideoPlayer from './components/VideoPlayer'
-import WelcomeScreen from './components/WelcomeScreen'
+import EditorPane from './components/EditorPane'
 import KanbanBoard from './components/KanbanBoard'
 import CalendarView from './components/CalendarView'
 import WorkflowBoard from './components/WorkflowBoard'
@@ -18,6 +12,45 @@ import { isRecentlySaved } from './utils/recentSave'
 
 // Allow mdTemplates to resolve the current user (for {{author}}) without a circular import
 registerCurrentUserGetter(() => useAppStore.getState().currentUser)
+
+function SplitDivider() {
+  const ref = useRef<HTMLDivElement>(null)
+  const [dragging, setDragging] = useState(false)
+
+  const onMouseDown = useCallback((e: React.MouseEvent) => {
+    e.preventDefault()
+    setDragging(true)
+    const parent = ref.current?.parentElement
+    if (!parent) return
+    const startX = e.clientX
+    const startWidth = (parent.children[0] as HTMLElement).getBoundingClientRect().width
+    const totalWidth = parent.getBoundingClientRect().width
+
+    const onMove = (ev: MouseEvent) => {
+      const delta = ev.clientX - startX
+      const pct = Math.min(80, Math.max(20, ((startWidth + delta) / totalWidth) * 100))
+      ;(parent.children[0] as HTMLElement).style.flex = `0 0 ${pct}%`
+      ;(parent.children[2] as HTMLElement).style.flex = `0 0 ${100 - pct}%`
+    }
+    const onUp = () => {
+      setDragging(false)
+      window.removeEventListener('mousemove', onMove)
+      window.removeEventListener('mouseup', onUp)
+    }
+    window.addEventListener('mousemove', onMove)
+    window.addEventListener('mouseup', onUp)
+  }, [])
+
+  return (
+    <div
+      ref={ref}
+      onMouseDown={onMouseDown}
+      className={`w-1 flex-shrink-0 cursor-col-resize hover:bg-blue-400 transition-colors ${
+        dragging ? 'bg-blue-500' : 'bg-gray-200 dark:bg-gray-700'
+      }`}
+    />
+  )
+}
 
 export default function App() {
   const {
@@ -29,9 +62,8 @@ export default function App() {
     openTab,
     setTabFileChanged,
     sidebarTab,
+    splitMode,
   } = useAppStore()
-
-  const activeTab = tabs.find(t => t.id === activeTabId) ?? null
 
   // ── Initialize from electron-store ────────────────────────────────────────
   useEffect(() => {
@@ -143,7 +175,8 @@ export default function App() {
   // ── Warn before closing with unsaved changes ─────────────────────────────
   useEffect(() => {
     const unsub = window.electronAPI.onBeforeClose(() => {
-      const hasDirty = useAppStore.getState().tabs.some(t => t.isDirty)
+      const s = useAppStore.getState()
+      const hasDirty = s.tabs.some(t => t.isDirty) || s.rightTabs.some(t => t.isDirty)
       if (hasDirty) {
         const ok = window.confirm('저장하지 않은 문서가 있습니다. 저장하지 않고 종료하시겠습니까?')
         window.electronAPI.confirmClose(ok)
@@ -284,59 +317,23 @@ export default function App() {
           onOpenFilePinned={(p, n) => openFile(p, n, false)}
         />
         <div className="flex-1 flex flex-col overflow-hidden">
-          {sidebarTab !== 'kanban' && sidebarTab !== 'calendar' && sidebarTab !== 'workflow' && <TabBar />}
-          <main className="flex-1 overflow-hidden">
           {sidebarTab === 'calendar' ? (
             <CalendarView onOpenFile={(p, n) => { useAppStore.getState().setSidebarTab('tree'); openFile(p, n, false) }} />
           ) : sidebarTab === 'kanban' ? (
             <KanbanBoard onOpenFile={(p, n) => { useAppStore.getState().setSidebarTab('tree'); openFile(p, n, false) }} />
           ) : sidebarTab === 'workflow' ? (
             <WorkflowBoard onOpenFile={(p, n) => { useAppStore.getState().setSidebarTab('tree'); openFile(p, n, false) }} />
-          ) : activeTab ? (
-            activeTab.fileType === 'image'
-              ? <ImageViewer tab={activeTab} onOpenFile={(p, n) => openFile(p, n, true)} />
-              : activeTab.fileType === 'video'
-              ? <VideoPlayer tab={activeTab} />
-              : activeTab.fileType === 'pdf'
-              ? <PdfViewer tab={activeTab} />
-              : activeTab.fileType === 'docx'
-              ? <DocxViewer tab={activeTab} />
-              : activeTab.fileType === 'other'
-              ? (
-                <div className="flex-1 flex flex-col items-center justify-center gap-4 text-gray-400 dark:text-gray-500">
-                  <svg className="w-16 h-16" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
-                  </svg>
-                  <div className="text-center">
-                    <p className="text-lg font-medium text-gray-500 dark:text-gray-400">{activeTab.fileName}</p>
-                    <p className="text-sm mt-1">이 파일 형식은 Docuflow에서 미리볼 수 없습니다.</p>
-                    <p className="text-sm text-gray-400 dark:text-gray-500 mt-0.5">기본 프로그램으로 열려면 아래 버튼을 클릭하세요.</p>
-                  </div>
-                  <button
-                    onClick={() => window.electronAPI.openPath(activeTab.filePath)}
-                    className="flex items-center gap-2 px-4 py-2 rounded-lg bg-blue-600 hover:bg-blue-700 text-white text-sm transition-colors"
-                  >
-                    <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14" />
-                    </svg>
-                    기본 앱으로 열기
-                  </button>
-                  <button
-                    onClick={() => window.electronAPI.showItemInFolder(activeTab.filePath)}
-                    className="flex items-center gap-2 px-3 py-1.5 rounded-md text-xs text-gray-500 hover:text-gray-700 dark:hover:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors"
-                  >
-                    <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 7a2 2 0 012-2h4l2 2h8a2 2 0 012 2v9a2 2 0 01-2 2H5a2 2 0 01-2-2V7z" />
-                    </svg>
-                    탐색기에서 보기
-                  </button>
-                </div>
-              )
-              : <MarkdownEditor tab={activeTab} />
           ) : (
-            <WelcomeScreen />
+            <div className="flex-1 flex overflow-hidden">
+              <EditorPane paneId="left" openFile={openFile} />
+              {splitMode && (
+                <>
+                  <SplitDivider />
+                  <EditorPane paneId="right" openFile={openFile} />
+                </>
+              )}
+            </div>
           )}
-          </main>
         </div>
       </div>
     </div>

@@ -304,6 +304,16 @@ export default function ProjectTree({ project, projectIndex, searchQuery, onOpen
     const content = selectedTemplate ? selectedTemplate.generate(title) : `# ${title}\n\n`
     const result = await window.electronAPI.createFile(filePath, content)
     if (result.success) {
+      // Ensure parent folders are expanded so the new file is visible
+      const { toggleOpenDir: tod } = useAppStore.getState()
+      let dir = targetDir
+      const root = project.path.replace(/\\/g, '/')
+      while (dir.replace(/\\/g, '/') !== root && dir.length > root.length) {
+        tod(project.id, dir, true)
+        const lastSep = Math.max(dir.lastIndexOf('/'), dir.lastIndexOf('\\'))
+        if (lastSep <= 0) break
+        dir = dir.slice(0, lastSep)
+      }
       loadNodes()
       onOpenFilePinned(filePath, finalName)
     } else {

@@ -33,8 +33,10 @@ export interface Project {
   collapsed: boolean
 }
 
+export type PaneId = 'left' | 'right'
+
 interface AppStore {
-  // Tabs
+  // Tabs (left pane — also the primary pane when not split)
   tabs: Tab[]
   activeTabId: string | null
   openTab: (filePath: string, fileName: string, content: string, fileType?: TabFileType, isPreview?: boolean) => void
@@ -47,6 +49,16 @@ interface AppStore {
   setTabScrollPos: (tabId: string, pos: number) => void
   setTabFileChanged: (filePath: string, changed: boolean) => void
   markTabSaved: (tabId: string, content: string) => void
+
+  // Split pane
+  splitMode: null | 'vertical'
+  activePaneId: PaneId
+  rightTabs: Tab[]
+  rightActiveTabId: string | null
+  toggleSplit: () => void
+  closeSplit: () => void
+  setActivePane: (paneId: PaneId) => void
+  moveTabToPane: (tabId: string, targetPane: PaneId) => void
 
   // Projects (multiple root folders)
   projects: Project[]
@@ -142,21 +154,41 @@ export const useAppStore = create<AppStore>((set, get) => ({
   tabs: [],
   activeTabId: null,
 
-  openTab: (filePath, fileName, content, fileType = 'md', isPreview = false) => {
-    const { tabs } = get()
+  // ── Split pane ───────────────────────────────────────────────────────────
+  splitMode: null,
+  activePaneId: 'left',
+  rightTabs: [],
+  rightActiveTabId: null,
 
-    // 이미 열려 있는 탭이면 그냥 활성화
-    const existing = tabs.find(t => t.filePath === filePath)
+  openTab: (filePath, fileName, content, fileType = 'md', isPreview = false) => {
+    const state = get()
+    const { activePaneId, splitMode } = state
+
+    // Check both panes for existing tab
+    const existingLeft = state.tabs.find(t => t.filePath === filePath)
+    const existingRight = state.rightTabs.find(t => t.filePath === filePath)
+    const existing = existingLeft || existingRight
+    const existingPane: PaneId = existingLeft ? 'left' : 'right'
+
     if (existing) {
-      // preview 탭을 고정 탭으로 열 때 핀 처리
+      const updates: Partial<AppStore> = { activePaneId: existingPane }
       if (!isPreview && existing.isPreview) {
-        set(s => ({
-          tabs: s.tabs.map(t => t.id === existing.id ? { ...t, isPreview: false } : t),
-          activeTabId: existing.id,
-        }))
+        if (existingPane === 'left') {
+          Object.assign(updates, {
+            tabs: state.tabs.map(t => t.id === existing.id ? { ...t, isPreview: false } : t),
+            activeTabId: existing.id,
+          })
+        } else {
+          Object.assign(updates, {
+            rightTabs: state.rightTabs.map(t => t.id === existing.id ? { ...t, isPreview: false } : t),
+            rightActiveTabId: existing.id,
+          })
+        }
       } else {
-        set({ activeTabId: existing.id })
+        if (existingPane === 'left') updates.activeTabId = existing.id
+        else updates.rightActiveTabId = existing.id
       }
+      set(updates as any)
       return
     }
 
@@ -167,64 +199,211 @@ export const useAppStore = create<AppStore>((set, get) => ({
       scrollPos: 0, fileChangedOnDisk: false,
     }
 
+    const pane = splitMode ? activePaneId : 'left'
+    const paneTabs = pane === 'left' ? state.tabs : state.rightTabs
+    const tabsKey = pane === 'left' ? 'tabs' : 'rightTabs'
+    const activeKey = pane === 'left' ? 'activeTabId' : 'rightActiveTabId'
+
     if (isPreview) {
-      // 기존 preview 탭을 새 파일로 교체
-      const previewIdx = tabs.findIndex(t => t.isPreview)
+      const previewIdx = paneTabs.findIndex(t => t.isPreview)
       if (previewIdx !== -1) {
-        const newTabs = [...tabs]
-        newTabs[previewIdx] = { ...newTab, id: tabs[previewIdx].id }
-        set({ tabs: newTabs, activeTabId: tabs[previewIdx].id })
+        const updated = [...paneTabs]
+        updated[previewIdx] = { ...newTab, id: paneTabs[previewIdx].id }
+        set({ [tabsKey]: updated, [activeKey]: paneTabs[previewIdx].id } as any)
         return
       }
     }
 
-    set(s => ({ tabs: [...s.tabs, newTab], activeTabId: id }))
+    set({ [tabsKey]: [...paneTabs, newTab], [activeKey]: id } as any)
   },
 
   pinTab: (tabId) => {
     set(s => ({
       tabs: s.tabs.map(t => t.id === tabId ? { ...t, isPreview: false } : t),
+      rightTabs: s.rightTabs.map(t => t.id === tabId ? { ...t, isPreview: false } : t),
     }))
   },
 
   closeTab: (tabId) => {
-    const { tabs, activeTabId } = get()
-    const idx = tabs.findIndex(t => t.id === tabId)
-    if (idx === -1) return
-    const newTabs = tabs.filter(t => t.id !== tabId)
-    let newActive = activeTabId
-    if (activeTabId === tabId) {
-      if (newTabs.length === 0) newActive = null
-      else if (idx > 0) newActive = newTabs[idx - 1].id
-      else newActive = newTabs[0].id
+    const state = get()
+    const inLeft = state.tabs.some(t => t.id === tabId)
+    const inRight = state.rightTabs.some(t => t.id === tabId)
+
+    if (inLeft) {
+      const idx = state.tabs.findIndex(t => t.id === tabId)
+      const newTabs = state.tabs.filter(t => t.id !== tabId)
+      let newActive = state.activeTabId
+      if (state.activeTabId === tabId) {
+        if (newTabs.length === 0) newActive = null
+        else if (idx > 0) newActive = newTabs[idx - 1].id
+        else newActive = newTabs[0].id
+      }
+      const updates: any = { tabs: newTabs, activeTabId: newActive }
+      if (newTabs.length === 0 && state.splitMode) {
+        updates.tabs = state.rightTabs
+        updates.activeTabId = state.rightActiveTabId
+        updates.rightTabs = []
+        updates.rightActiveTabId = null
+        updates.splitMode = null
+        updates.activePaneId = 'left'
+      }
+      set(updates)
+    } else if (inRight) {
+      const idx = state.rightTabs.findIndex(t => t.id === tabId)
+      const newTabs = state.rightTabs.filter(t => t.id !== tabId)
+      let newActive = state.rightActiveTabId
+      if (state.rightActiveTabId === tabId) {
+        if (newTabs.length === 0) newActive = null
+        else if (idx > 0) newActive = newTabs[idx - 1].id
+        else newActive = newTabs[0].id
+      }
+      const updates: any = { rightTabs: newTabs, rightActiveTabId: newActive }
+      if (newTabs.length === 0 && state.splitMode) {
+        updates.splitMode = null
+        updates.activePaneId = 'left'
+      }
+      set(updates)
     }
-    set({ tabs: newTabs, activeTabId: newActive })
   },
 
-  setActiveTab: (tabId) => set({ activeTabId: tabId }),
+  setActiveTab: (tabId) => {
+    const state = get()
+    if (state.tabs.some(t => t.id === tabId)) {
+      set({ activeTabId: tabId, activePaneId: 'left' })
+    } else if (state.rightTabs.some(t => t.id === tabId)) {
+      set({ rightActiveTabId: tabId, activePaneId: 'right' })
+    }
+  },
 
   updateTabContent: (tabId, content) => {
-    set(s => ({ tabs: s.tabs.map(t => t.id === tabId ? { ...t, content, isDirty: true } : t) }))
+    set(s => ({
+      tabs: s.tabs.map(t => t.id === tabId ? { ...t, content, isDirty: true } : t),
+      rightTabs: s.rightTabs.map(t => t.id === tabId ? { ...t, content, isDirty: true } : t),
+    }))
   },
 
   markTabDirty: (tabId, dirty) => {
-    set(s => ({ tabs: s.tabs.map(t => t.id === tabId ? { ...t, isDirty: dirty } : t) }))
+    set(s => ({
+      tabs: s.tabs.map(t => t.id === tabId ? { ...t, isDirty: dirty } : t),
+      rightTabs: s.rightTabs.map(t => t.id === tabId ? { ...t, isDirty: dirty } : t),
+    }))
   },
 
   setTabEditMode: (tabId, editMode) => {
-    set(s => ({ tabs: s.tabs.map(t => t.id === tabId ? { ...t, isEditMode: editMode } : t) }))
+    set(s => ({
+      tabs: s.tabs.map(t => t.id === tabId ? { ...t, isEditMode: editMode } : t),
+      rightTabs: s.rightTabs.map(t => t.id === tabId ? { ...t, isEditMode: editMode } : t),
+    }))
   },
 
   setTabScrollPos: (tabId, pos) => {
-    set(s => ({ tabs: s.tabs.map(t => t.id === tabId ? { ...t, scrollPos: pos } : t) }))
+    set(s => ({
+      tabs: s.tabs.map(t => t.id === tabId ? { ...t, scrollPos: pos } : t),
+      rightTabs: s.rightTabs.map(t => t.id === tabId ? { ...t, scrollPos: pos } : t),
+    }))
   },
 
   setTabFileChanged: (filePath, changed) => {
-    set(s => ({ tabs: s.tabs.map(t => t.filePath === filePath ? { ...t, fileChangedOnDisk: changed } : t) }))
+    set(s => ({
+      tabs: s.tabs.map(t => t.filePath === filePath ? { ...t, fileChangedOnDisk: changed } : t),
+      rightTabs: s.rightTabs.map(t => t.filePath === filePath ? { ...t, fileChangedOnDisk: changed } : t),
+    }))
   },
 
   markTabSaved: (tabId, content) => {
-    set(s => ({ tabs: s.tabs.map(t => t.id === tabId ? { ...t, content, isDirty: false, fileChangedOnDisk: false } : t) }))
+    set(s => ({
+      tabs: s.tabs.map(t => t.id === tabId ? { ...t, content, isDirty: false, fileChangedOnDisk: false } : t),
+      rightTabs: s.rightTabs.map(t => t.id === tabId ? { ...t, content, isDirty: false, fileChangedOnDisk: false } : t),
+    }))
+  },
+
+  toggleSplit: () => {
+    const state = get()
+    if (state.splitMode) {
+      // Close split: merge right tabs into left
+      const merged = [...state.tabs, ...state.rightTabs]
+      set({
+        splitMode: null,
+        tabs: merged,
+        activeTabId: state.activePaneId === 'right' ? state.rightActiveTabId : state.activeTabId,
+        rightTabs: [],
+        rightActiveTabId: null,
+        activePaneId: 'left',
+      })
+    } else {
+      // Split: move current active tab to right pane
+      const activeTab = state.tabs.find(t => t.id === state.activeTabId)
+      if (!activeTab || state.tabs.length < 2) {
+        // Need at least 2 tabs to split, or just enable empty right
+        set({ splitMode: 'vertical', activePaneId: 'left' })
+        return
+      }
+      const leftTabs = state.tabs.filter(t => t.id !== activeTab.id)
+      const leftActive = leftTabs.length > 0 ? leftTabs[leftTabs.length - 1].id : null
+      set({
+        splitMode: 'vertical',
+        tabs: leftTabs,
+        activeTabId: leftActive,
+        rightTabs: [activeTab],
+        rightActiveTabId: activeTab.id,
+        activePaneId: 'right',
+      })
+    }
+  },
+
+  closeSplit: () => {
+    const state = get()
+    const merged = [...state.tabs, ...state.rightTabs]
+    set({
+      splitMode: null,
+      tabs: merged,
+      activeTabId: state.activePaneId === 'right' ? state.rightActiveTabId : state.activeTabId,
+      rightTabs: [],
+      rightActiveTabId: null,
+      activePaneId: 'left',
+    })
+  },
+
+  setActivePane: (paneId) => set({ activePaneId: paneId }),
+
+  moveTabToPane: (tabId, targetPane) => {
+    const state = get()
+    const fromLeft = state.tabs.find(t => t.id === tabId)
+    const fromRight = state.rightTabs.find(t => t.id === tabId)
+
+    if (fromLeft && targetPane === 'right') {
+      const newLeft = state.tabs.filter(t => t.id !== tabId)
+      let leftActive = state.activeTabId
+      if (leftActive === tabId) {
+        leftActive = newLeft.length > 0 ? newLeft[Math.max(0, state.tabs.indexOf(fromLeft) - 1)].id : null
+      }
+      set({
+        tabs: newLeft,
+        activeTabId: leftActive,
+        rightTabs: [...state.rightTabs, fromLeft],
+        rightActiveTabId: fromLeft.id,
+        activePaneId: 'right',
+        splitMode: 'vertical',
+      })
+    } else if (fromRight && targetPane === 'left') {
+      const newRight = state.rightTabs.filter(t => t.id !== tabId)
+      let rightActive = state.rightActiveTabId
+      if (rightActive === tabId) {
+        rightActive = newRight.length > 0 ? newRight[Math.max(0, state.rightTabs.indexOf(fromRight) - 1)].id : null
+      }
+      const updates: any = {
+        tabs: [...state.tabs, fromRight],
+        activeTabId: fromRight.id,
+        rightTabs: newRight,
+        rightActiveTabId: rightActive,
+        activePaneId: 'left',
+      }
+      if (newRight.length === 0) {
+        updates.splitMode = null
+        updates.activePaneId = 'left'
+      }
+      set(updates)
+    }
   },
 
   // ── Projects ───────────────────────────────────────────────────────────────
@@ -451,7 +630,7 @@ export const useAppStore = create<AppStore>((set, get) => ({
     set({ fontFamily: font })
   },
 
-  showTOC: true,
+  showTOC: false,
   setShowTOC: (show) => set({ showTOC: show }),
 
   // Spellcheck is off by default because Chromium's Korean dictionary

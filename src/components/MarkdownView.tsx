@@ -263,7 +263,7 @@ export default function MarkdownView({ tab, scrollRef, lineNumbers }: Props) {
   // SyntaxHighlighter block to re-highlight) on unrelated re-renders.
   const markdownElement = useMemo(() => (
     <ReactMarkdown
-      remarkPlugins={[remarkGfm, remarkMark, remarkInlineTag]}
+      remarkPlugins={[[remarkGfm, { singleTilde: false }], remarkMark, remarkInlineTag]}
       urlTransform={(url) => url}
       components={{
         h1: (p) => <HeadingWithId level={1} {...p} />,

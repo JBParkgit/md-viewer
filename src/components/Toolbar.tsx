@@ -17,7 +17,7 @@ interface MenuDef {
 export default function Toolbar() {
   const {
     addProject, darkMode, setDarkMode, fontSize, setFontSize, fontFamily, setFontFamily,
-    showTOC, setShowTOC, toggleSidebar, sidebarCollapsed,
+    showTOC, setShowTOC, toggleSidebar, sidebarCollapsed, splitMode, toggleSplit,
     spellcheckEnabled, setSpellcheckEnabled,
   } = useAppStore()
   const [openIdx, setOpenIdx] = useState<number | null>(null)
@@ -211,6 +211,22 @@ export default function Toolbar() {
           A+
         </button>
       </div>
+
+      {/* Split pane toggle */}
+      <button
+        onClick={() => toggleSplit()}
+        className={`w-7 h-7 flex items-center justify-center rounded flex-shrink-0 ${
+          splitMode
+            ? 'bg-blue-100 text-blue-600 dark:bg-blue-900 dark:text-blue-400'
+            : 'hover:bg-gray-200 dark:hover:bg-gray-700 text-gray-500 dark:text-gray-400'
+        }`}
+        style={{ WebkitAppRegion: 'no-drag' } as React.CSSProperties}
+        title="화면 분할"
+      >
+        <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16M4 4h16v16H4z" />
+        </svg>
+      </button>
 
       {/* TOC toggle */}
       <button

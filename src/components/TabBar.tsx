@@ -1,9 +1,20 @@
 import { useRef, useState, useEffect, useCallback } from 'react'
-import { useAppStore } from '../stores/useAppStore'
+import { useAppStore, type PaneId } from '../stores/useAppStore'
 import { FileTypeIcon } from '../utils/fileType'
 
-export default function TabBar() {
-  const { tabs, activeTabId, setActiveTab, closeTab, pinTab } = useAppStore()
+interface Props {
+  paneId?: PaneId
+}
+
+export default function TabBar({ paneId = 'left' }: Props) {
+  const tabs = useAppStore(s => paneId === 'right' ? s.rightTabs : s.tabs)
+  const activeTabId = useAppStore(s => paneId === 'right' ? s.rightActiveTabId : s.activeTabId)
+  const setActiveTab = useAppStore(s => s.setActiveTab)
+  const closeTab = useAppStore(s => s.closeTab)
+  const pinTab = useAppStore(s => s.pinTab)
+  const splitMode = useAppStore(s => s.splitMode)
+  const moveTabToPane = useAppStore(s => s.moveTabToPane)
+
   const scrollRef = useRef<HTMLDivElement>(null)
   const [canScrollLeft, setCanScrollLeft] = useState(false)
   const [canScrollRight, setCanScrollRight] = useState(false)
@@ -74,7 +85,7 @@ export default function TabBar() {
             <div
               key={tab.id}
               data-tab-id={tab.id}
-              onClick={() => setActiveTab(tab.id)}
+              onClick={() => { useAppStore.getState().setActivePane(paneId); setActiveTab(tab.id) }}
               onDoubleClick={() => { if (tab.isPreview) pinTab(tab.id) }}
               className={`
                 group flex items-center gap-1.5 px-3 py-2 cursor-pointer whitespace-nowrap
@@ -102,9 +113,24 @@ export default function TabBar() {
                 )}
               </span>
 
-              {/* 미리보기 표시 핀 / 닫기 버튼 */}
+              {/* 다른 패인으로 이동 */}
+              {splitMode && (
+                <button
+                  onClick={(e) => { e.stopPropagation(); moveTabToPane(tab.id, paneId === 'left' ? 'right' : 'left') }}
+                  className="w-4 h-4 flex items-center justify-center rounded hover:bg-gray-300 dark:hover:bg-gray-600 opacity-0 group-hover:opacity-60 hover:!opacity-100 transition-opacity flex-shrink-0"
+                  title={paneId === 'left' ? '오른쪽으로 이동' : '왼쪽으로 이동'}
+                >
+                  <svg className="w-2.5 h-2.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    {paneId === 'left'
+                      ? <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
+                      : <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
+                    }
+                  </svg>
+                </button>
+              )}
+
+              {/* 닫기 버튼 */}
               {tab.isPreview ? (
-                // preview 탭: 닫기 버튼만 (항상 표시)
                 <button
                   onClick={(e) => { e.stopPropagation(); closeTab(tab.id) }}
                   className="w-4 h-4 flex items-center justify-center rounded hover:bg-gray-300 dark:hover:bg-gray-600 flex-shrink-0 opacity-60 hover:opacity-100"
@@ -115,7 +141,6 @@ export default function TabBar() {
                   </svg>
                 </button>
               ) : (
-                // 고정 탭: hover 시 닫기 버튼
                 <button
                   onClick={(e) => { e.stopPropagation(); closeTab(tab.id) }}
                   className="w-4 h-4 flex items-center justify-center rounded hover:bg-gray-300 dark:hover:bg-gray-600 opacity-0 group-hover:opacity-100 transition-opacity flex-shrink-0"
