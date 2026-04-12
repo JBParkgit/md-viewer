@@ -8,6 +8,7 @@ import ImageModal from './ImageModal'
 import { parseFrontmatterTags, stripFrontmatter } from '../utils/frontmatter'
 import { getTagColorClasses } from './TagPanel'
 import remarkMark from '../utils/remarkMark'
+import remarkInlineTag from '../utils/remarkInlineTag'
 import MermaidDiagram from './MermaidDiagram'
 
 interface Props {
@@ -262,7 +263,7 @@ export default function MarkdownView({ tab, scrollRef, lineNumbers }: Props) {
   // SyntaxHighlighter block to re-highlight) on unrelated re-renders.
   const markdownElement = useMemo(() => (
     <ReactMarkdown
-      remarkPlugins={[remarkGfm, remarkMark]}
+      remarkPlugins={[remarkGfm, remarkMark, remarkInlineTag]}
       urlTransform={(url) => url}
       components={{
         h1: (p) => <HeadingWithId level={1} {...p} />,
