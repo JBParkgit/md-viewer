@@ -419,7 +419,50 @@ export default function ProjectTree({ project, projectIndex, searchQuery, onOpen
   }, [project.id, project.collapsed, toggleProjectCollapsed])
 
   return (
-    <div className="border-b border-gray-200 dark:border-gray-700 last:border-0">
+    <div
+      className={`border-b border-gray-200 dark:border-gray-700 last:border-0 pb-1 ${headerDragOver ? 'bg-blue-50/30 dark:bg-blue-900/10' : ''}`}
+      onDragOver={(e) => {
+        if (e.dataTransfer.types.includes('application/x-filepath') || e.dataTransfer.types.includes('application/x-filepaths') || e.dataTransfer.types.includes('Files')) {
+          e.preventDefault()
+          e.dataTransfer.dropEffect = e.dataTransfer.types.includes('Files') ? 'copy' : 'move'
+          setHeaderDragOver(true)
+        }
+      }}
+      onDragLeave={() => setHeaderDragOver(false)}
+      onDrop={async (e) => {
+        e.preventDefault()
+        setHeaderDragOver(false)
+
+        // External files from OS explorer
+        if (e.dataTransfer.files && e.dataTransfer.files.length > 0) {
+          const hasInternal = e.dataTransfer.getData('application/x-filepath') || e.dataTransfer.getData('application/x-filepaths')
+          if (!hasInternal) {
+            let copied = 0
+            for (const file of Array.from(e.dataTransfer.files)) {
+              const srcPath = window.electronAPI.getPathForFile(file)
+              if (!srcPath) continue
+              const result = await window.electronAPI.copyFileToDir(srcPath, project.path)
+              if (result.success) copied++
+              else alert(result.error || '복사 실패: ' + file.name)
+            }
+            return
+          }
+        }
+
+        // Internal drag
+        const multiData = e.dataTransfer.getData('application/x-filepaths')
+        const srcPaths: string[] = multiData ? JSON.parse(multiData) : []
+        if (srcPaths.length === 0) {
+          const single = e.dataTransfer.getData('application/x-filepath')
+          if (single) srcPaths.push(single)
+        }
+        for (const srcPath of srcPaths) {
+          if (srcPath === project.path) continue
+          const result = await window.electronAPI.move(srcPath, project.path)
+          if (!result.success) alert(result.error || '이동 실패')
+        }
+      }}
+    >
       {/* Project header */}
       <div
         draggable
@@ -429,29 +472,6 @@ export default function ProjectTree({ project, projectIndex, searchQuery, onOpen
         onDragStart={(e) => {
           e.dataTransfer.effectAllowed = 'move'
           e.dataTransfer.setData('text/plain', String(projectIndex))
-        }}
-        onDragOver={(e) => {
-          if (e.dataTransfer.types.includes('application/x-filepath') || e.dataTransfer.types.includes('application/x-filepaths')) {
-            e.preventDefault()
-            e.dataTransfer.dropEffect = 'move'
-            setHeaderDragOver(true)
-          }
-        }}
-        onDragLeave={() => setHeaderDragOver(false)}
-        onDrop={async (e) => {
-          e.preventDefault()
-          setHeaderDragOver(false)
-          const multiData = e.dataTransfer.getData('application/x-filepaths')
-          const srcPaths: string[] = multiData ? JSON.parse(multiData) : []
-          if (srcPaths.length === 0) {
-            const single = e.dataTransfer.getData('application/x-filepath')
-            if (single) srcPaths.push(single)
-          }
-          for (const srcPath of srcPaths) {
-            if (srcPath === project.path) continue
-            const result = await window.electronAPI.move(srcPath, project.path)
-            if (!result.success) alert(result.error || '이동 실패')
-          }
         }}
         title={project.path}
       >

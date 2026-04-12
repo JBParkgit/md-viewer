@@ -58,6 +58,7 @@ export interface ElectronAPI {
   createFile: (filePath: string, content?: string) => Promise<{ success: boolean; error?: string }>
   renameFile: (oldPath: string, newName: string) => Promise<{ success: boolean; newPath?: string; error?: string }>
   deleteFile: (filePath: string) => Promise<{ success: boolean; error?: string }>
+  copyFileToDir: (srcPath: string, destDir: string) => Promise<{ success: boolean; newPath?: string; error?: string }>
   move: (srcPath: string, destDir: string) => Promise<{ success: boolean; newPath?: string; error?: string }>
   createDir: (dirPath: string) => Promise<{ success: boolean; error?: string }>
   saveFolder: () => Promise<string | null>

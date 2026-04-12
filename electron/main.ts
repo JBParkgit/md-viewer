@@ -906,6 +906,24 @@ ipcMain.handle('fs:deleteFile', async (_e, filePath: string) => {
 })
 
 // ── IPC: Move file/folder ────────────────────────────────────────────────────
+ipcMain.handle('fs:copyFileToDir', async (_e, srcPath: string, destDir: string) => {
+  try {
+    const name = basename(srcPath)
+    let destPath = join(destDir, name)
+    let counter = 1
+    while (existsSync(destPath)) {
+      const ext = extname(name)
+      const base = name.slice(0, -ext.length || undefined)
+      destPath = join(destDir, `${base}_${counter}${ext}`)
+      counter++
+    }
+    await copyFile(srcPath, destPath)
+    return { success: true, newPath: destPath }
+  } catch (err: unknown) {
+    return { success: false, error: String(err) }
+  }
+})
+
 ipcMain.handle('fs:move', async (_e, srcPath: string, destDir: string) => {
   try {
     const name = basename(srcPath)

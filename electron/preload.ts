@@ -39,6 +39,7 @@ contextBridge.exposeInMainWorld('electronAPI', {
   createFile: (filePath: string, content?: string) => ipcRenderer.invoke('fs:createFile', filePath, content ?? ''),
   renameFile: (oldPath: string, newName: string) => ipcRenderer.invoke('fs:rename', oldPath, newName),
   deleteFile: (filePath: string) => ipcRenderer.invoke('fs:deleteFile', filePath),
+  copyFileToDir: (srcPath: string, destDir: string) => ipcRenderer.invoke('fs:copyFileToDir', srcPath, destDir),
   move: (srcPath: string, destDir: string) => ipcRenderer.invoke('fs:move', srcPath, destDir),
   createDir: (dirPath: string) => ipcRenderer.invoke('fs:createDir', dirPath),
   saveFolder: () => ipcRenderer.invoke('dialog:saveFolder'),
