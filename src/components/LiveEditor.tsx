@@ -30,7 +30,7 @@ const lightTheme = EditorView.theme({
   '&': {
     height: '100%',
     fontSize: 'var(--md-font-size)',
-    fontFamily: "'JetBrains Mono', 'Fira Code', 'Consolas', 'Courier New', monospace",
+    fontFamily: "var(--md-font-family)",
   },
   '.cm-scroller': {
     overflow: 'auto',
@@ -72,7 +72,7 @@ const darkTheme = EditorView.theme({
   '&': {
     height: '100%',
     fontSize: 'var(--md-font-size)',
-    fontFamily: "'JetBrains Mono', 'Fira Code', 'Consolas', 'Courier New', monospace",
+    fontFamily: "var(--md-font-family)",
   },
   '.cm-scroller': {
     overflow: 'auto',

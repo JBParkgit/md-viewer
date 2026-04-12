@@ -47,6 +47,67 @@ export default function MarkdownEditor({ tab }: Props) {
   const [saveSuccess, setSaveSuccess] = useState(false)
   const [alreadySaved, setAlreadySaved] = useState(false)
 
+  // ── Git info for status bar ────────────────────────────────────────────
+  interface GitInfo {
+    branch: string | null
+    fileStatus: string | null  // 'M', 'A', 'D', '?', or null = clean/unknown
+    lastCommit: { hash: string; date: string; subject: string } | null
+  }
+  const [gitInfo, setGitInfo] = useState<GitInfo>({ branch: null, fileStatus: null, lastCommit: null })
+
+  const refreshGitInfo = useCallback(async () => {
+    if (!projectPath) { setGitInfo({ branch: null, fileStatus: null, lastCommit: null }); return }
+    const isRepo = await window.electronAPI.gitIsRepo(projectPath)
+    if (!isRepo) { setGitInfo({ branch: null, fileStatus: null, lastCommit: null }); return }
+    // Compute relative path
+    const normProject = projectPath.replace(/\\/g, '/')
+    const normFile = tab.filePath.replace(/\\/g, '/')
+    const pfx = normProject.endsWith('/') ? normProject : normProject + '/'
+    const rel = normFile.startsWith(pfx) ? normFile.slice(pfx.length) : null
+    const [branchRes, statusRes, logRes] = await Promise.all([
+      window.electronAPI.gitBranch(projectPath),
+      window.electronAPI.gitStatus(projectPath),
+      rel ? window.electronAPI.gitFileLog(projectPath, rel) : Promise.resolve({ success: false } as { success: false }),
+    ])
+    const branch = branchRes.success ? (branchRes.output || '').trim() || null : null
+    let fileStatus: string | null = null
+    if (rel && statusRes.success && statusRes.output) {
+      for (const line of statusRes.output.split('\n')) {
+        if (!line) continue
+        let file = line.slice(3).replace(/\\/g, '/')
+        if (file.startsWith('"') && file.endsWith('"')) file = file.slice(1, -1)
+        if (file === rel) {
+          const wt = line[1]
+          const idx = line[0]
+          fileStatus = (wt !== ' ' ? wt : idx) || null
+          break
+        }
+      }
+    }
+    let lastCommit: GitInfo['lastCommit'] = null
+    if (logRes.success && logRes.output) {
+      const firstLine = logRes.output.split('\n').filter(Boolean)[0]
+      if (firstLine) {
+        const [hash, date, , ...rest] = firstLine.split('\t')
+        lastCommit = { hash, date, subject: rest.join('\t') }
+      }
+    }
+    setGitInfo({ branch, fileStatus, lastCommit })
+  }, [projectPath, tab.filePath])
+
+  useEffect(() => { refreshGitInfo() }, [refreshGitInfo])
+
+  // Re-fetch when THIS file or any file in its project is saved, or git status changes
+  useEffect(() => {
+    const handler = () => { refreshGitInfo() }
+    window.addEventListener('file-saved', handler)
+    window.addEventListener('git-status-changed', handler)
+    return () => {
+      window.removeEventListener('file-saved', handler)
+      window.removeEventListener('git-status-changed', handler)
+    }
+  }, [refreshGitInfo])
+
   // ── Word / character stats for status bar ──────────────────────────────
   const stats = useMemo(() => {
     const body = stripFrontmatter(tab.content)
@@ -312,13 +373,65 @@ export default function MarkdownEditor({ tab }: Props) {
         )}
       </div>
 
-      {/* Status bar — word / character stats at the bottom */}
-      <div className="flex items-center gap-3 px-4 h-6 border-t border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-800/60 text-[10px] text-gray-500 dark:text-gray-400 flex-shrink-0 select-none">
+      {/* Status bar — word / character stats + git info */}
+      <div className="flex items-center gap-3 px-4 h-6 border-t border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-800/60 text-[10px] text-gray-500 dark:text-gray-400 flex-shrink-0 select-none overflow-hidden">
         <span title="단어 수 (한중일 문자는 1단어)">{stats.words.toLocaleString()} 단어</span>
         <span className="text-gray-300 dark:text-gray-600">·</span>
         <span title="문자 수 (공백 포함)">{stats.chars.toLocaleString()} 문자</span>
         <span className="text-gray-300 dark:text-gray-600">·</span>
         <span title="문자 수 (공백 제외)">{stats.charsNoSpace.toLocaleString()} 공백제외</span>
+
+        {gitInfo.branch && (
+          <>
+            <span className="text-gray-300 dark:text-gray-600">·</span>
+            <span
+              className="inline-flex items-center gap-1"
+              title={`브랜치: ${gitInfo.branch}`}
+            >
+              <svg className="w-3 h-3 text-purple-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <circle cx="6" cy="6" r="2" strokeWidth={2} />
+                <circle cx="6" cy="18" r="2" strokeWidth={2} />
+                <circle cx="18" cy="9" r="2" strokeWidth={2} />
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 8v8M6 14c6 0 12-1 12-5" />
+              </svg>
+              <span className="font-mono text-purple-600 dark:text-purple-400">{gitInfo.branch}</span>
+            </span>
+          </>
+        )}
+
+        {gitInfo.fileStatus && (
+          <span
+            className={`font-mono font-bold ${
+              gitInfo.fileStatus === 'M' ? 'text-orange-500'
+              : gitInfo.fileStatus === 'A' ? 'text-green-500'
+              : gitInfo.fileStatus === 'D' ? 'text-red-500'
+              : gitInfo.fileStatus === '?' ? 'text-gray-400'
+              : 'text-gray-400'
+            }`}
+            title={
+              gitInfo.fileStatus === 'M' ? 'Modified (커밋 안 된 변경 있음)'
+              : gitInfo.fileStatus === 'A' ? 'Added (새 파일 스테이징됨)'
+              : gitInfo.fileStatus === 'D' ? 'Deleted'
+              : gitInfo.fileStatus === '?' ? 'Untracked (Git 추적 안 됨)'
+              : gitInfo.fileStatus
+            }
+          >
+            [{gitInfo.fileStatus}]
+          </span>
+        )}
+
+        {gitInfo.lastCommit && (
+          <>
+            <span className="text-gray-300 dark:text-gray-600">·</span>
+            <span
+              className="font-mono text-blue-500 dark:text-blue-400 truncate max-w-[360px]"
+              title={`${gitInfo.lastCommit.hash} (${gitInfo.lastCommit.date}) — ${gitInfo.lastCommit.subject}`}
+            >
+              {gitInfo.lastCommit.hash} {gitInfo.lastCommit.date}
+            </span>
+          </>
+        )}
+
         <div className="flex-1" />
         <span className="text-gray-400 dark:text-gray-500 truncate" title={tab.filePath}>
           {tab.filePath.replace(/\\/g, '/').split('/').pop()}
