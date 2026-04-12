@@ -270,7 +270,7 @@ async function readDirRecursive(dirPath: string, depth = 0): Promise<FileNode[]>
     const entries = await readdir(dirPath, { withFileTypes: true })
     const nodes: FileNode[] = []
     for (const entry of entries) {
-      if (entry.name.startsWith('.')) continue
+      if (entry.name === '.git' || entry.name === 'node_modules') continue
       const fullPath = join(dirPath, entry.name)
       if (entry.isDirectory()) {
         nodes.push({
@@ -283,9 +283,12 @@ async function readDirRecursive(dirPath: string, depth = 0): Promise<FileNode[]>
         nodes.push({ name: entry.name, path: fullPath, type: 'file' })
       }
     }
-    // Sort: directories first, then files
+    // Sort: directories first (dot-dirs last among dirs), then files (dot-files last)
     nodes.sort((a, b) => {
       if (a.type !== b.type) return a.type === 'directory' ? -1 : 1
+      const aDot = a.name.startsWith('.') ? 1 : 0
+      const bDot = b.name.startsWith('.') ? 1 : 0
+      if (aDot !== bDot) return aDot - bDot
       return a.name.localeCompare(b.name, 'ko')
     })
     return nodes
