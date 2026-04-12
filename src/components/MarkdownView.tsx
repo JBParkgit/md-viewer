@@ -16,6 +16,7 @@ interface Props {
   scrollRef?: React.MutableRefObject<HTMLDivElement | null>
   lineNumbers?: boolean
   cursorLine?: number
+  onScroll?: () => void
 }
 
 function slugify(text: string): string {
@@ -27,13 +28,58 @@ function slugify(text: string): string {
     .trim()
 }
 
-const headingSlugCounts = new Map<string, number>()
-
-function getTextContent(node: any): string {
-  if (typeof node === 'string') return node
-  if (Array.isArray(node)) return node.map(getTextContent).join('')
-  if (node?.props?.children) return getTextContent(node.props.children)
+function getAstText(node: any): string {
+  if (node.type === 'text' || node.type === 'inlineCode') return node.value || ''
+  if (node.children && Array.isArray(node.children)) return node.children.map(getAstText).join('')
   return ''
+}
+
+function visitHeadings(node: any, visitor: (n: any) => void) {
+  if (node.type === 'heading') visitor(node)
+  if (node.children && Array.isArray(node.children)) {
+    for (const child of node.children) visitHeadings(child, visitor)
+  }
+}
+
+function remarkHeadingId() {
+  return (tree: any) => {
+    const slugCounts = new Map<string, number>()
+    visitHeadings(tree, (node) => {
+      const text = getAstText(node)
+      let slug = slugify(text)
+      const count = slugCounts.get(slug) ?? 0
+      if (count > 0) slug = `${slug}-${count}`
+      slugCounts.set(slug, count + 1)
+      
+      node.data = node.data || {}
+      node.data.hProperties = node.data.hProperties || {}
+      node.data.hProperties.id = slug
+    })
+  }
+}
+
+function visitBlocks(node: any, visitor: (n: any) => void) {
+  const isBlock = ['paragraph', 'heading', 'list', 'listItem', 'code', 'blockquote', 'table', 'thematicBreak', 'html'].includes(node.type)
+  if (isBlock) visitor(node)
+  if (node.children && Array.isArray(node.children)) {
+    for (const child of node.children) visitBlocks(child, visitor)
+  }
+}
+
+function remarkLinePosition(options = { fmOffset: 0 }) {
+  return (tree: any) => {
+    visitBlocks(tree, (node) => {
+      if (node.position && node.position.start) {
+        node.data = node.data || {}
+        node.data.hProperties = node.data.hProperties || {}
+        node.data.hProperties['data-line'] = node.position.start.line + options.fmOffset
+        node.data.hProperties['data-line-end'] = Math.max(
+          node.position.start.line + options.fmOffset, 
+          node.position.end?.line ? node.position.end.line + options.fmOffset : 0
+        )
+      }
+    })
+  }
 }
 
 function scrollToHeading(id: string) {
@@ -56,11 +102,7 @@ function scrollToHeading(id: string) {
 }
 
 function HeadingWithId({ level, children, node, ...props }: { level: number; children?: any; node?: any; [k: string]: any }) {
-  const text = getTextContent(children)
-  let slug = slugify(text)
-  const count = headingSlugCounts.get(slug) ?? 0
-  if (count > 0) slug = `${slug}-${count}`
-  headingSlugCounts.set(slug, count + 1)
+  const slug = props.id || ""
   const Tag = `h${level}` as keyof JSX.IntrinsicElements
   return (
     <Tag id={slug} data-fold-level={level} {...props}>
@@ -94,7 +136,7 @@ function TagBadges({ tags }: { tags: string[] }) {
   )
 }
 
-export default function MarkdownView({ tab, scrollRef, lineNumbers, cursorLine }: Props) {
+export default function MarkdownView({ tab, scrollRef, lineNumbers, cursorLine, onScroll }: Props) {
   // Individual selectors: keep MarkdownView from re-rendering on every
   // unrelated store update (tabs array mutations, kanban state, etc.).
   const darkMode = useAppStore(s => s.darkMode)
@@ -136,47 +178,6 @@ export default function MarkdownView({ tab, scrollRef, lineNumbers, cursorLine }
     if (scrollRef) scrollRef.current = containerRef.current
   }, [scrollRef])
 
-  // Build line map: for each source line, which content does it start?
-  const lineMap = useMemo(() => {
-    if (!lineNumbers) return null
-    const stripped = stripFrontmatter(tab.content)
-    const lines = stripped.split('\n')
-    const map: Map<string, number> = new Map()
-    const fmLines = tab.content.split('\n')
-    const fmMatch = tab.content.match(/^---\r?\n[\s\S]*?\r?\n---\r?\n?/)
-    const offset = fmMatch ? fmMatch[0].split('\n').length - 1 : 0
-    const addKey = (text: string, lineNum: number) => {
-      if (!text) return
-      for (const len of [60, 30, 15, 8]) {
-        const key = text.slice(0, len)
-        if (key.length >= 2 && !map.has(key)) map.set(key, lineNum)
-      }
-    }
-
-    lines.forEach((line, i) => {
-      const trimmed = line.trim()
-      if (!trimmed || trimmed === '---' || trimmed === '```' || /^\|[-:| ]+\|$/.test(trimmed)) return
-      const lineNum = i + 1 + offset
-      // Store raw trimmed line
-      addKey(trimmed, lineNum)
-      // Also store with markdown syntax stripped so rendered text matches
-      const rendered = trimmed
-        .replace(/^#{1,6}\s+/, '')       // headings
-        .replace(/^[-*+]\s+/, '')        // unordered lists
-        .replace(/^\d+\.\s+/, '')        // ordered lists
-        .replace(/^>\s*/, '')            // blockquotes
-        .replace(/^- \[[ x]\]\s*/i, '') // task lists
-        .replace(/\*\*|__/g, '')         // bold
-        .replace(/\*|_/g, '')            // italic
-        .replace(/~~(.+?)~~/g, '$1')     // strikethrough
-        .replace(/`([^`]+)`/g, '$1')     // inline code
-        .replace(/\[([^\]]+)\]\([^)]+\)/g, '$1') // links
-        .trim()
-      if (rendered && rendered !== trimmed) addKey(rendered, lineNum)
-    })
-    return map
-  }, [tab.content, lineNumbers])
-
   // Restore scroll position (include filePath so preview tab reuse resets to top)
   useEffect(() => {
     if (containerRef.current) {
@@ -190,16 +191,19 @@ export default function MarkdownView({ tab, scrollRef, lineNumbers, cursorLine }
   // persisting it 200ms after scroll stops is fine.
   const scrollSaveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   const handleScroll = useCallback(() => {
+    if (onScroll) onScroll()
     if (scrollSaveTimerRef.current) clearTimeout(scrollSaveTimerRef.current)
     scrollSaveTimerRef.current = setTimeout(() => {
       if (containerRef.current) {
         setTabScrollPos(tab.id, containerRef.current.scrollTop)
       }
     }, 200)
-  }, [tab.id, setTabScrollPos])
+  }, [tab.id, setTabScrollPos, onScroll])
   useEffect(() => () => {
     if (scrollSaveTimerRef.current) clearTimeout(scrollSaveTimerRef.current)
   }, [])
+
+  const markdownBodyRef = useRef<HTMLDivElement>(null)
 
   // Highlight preview element closest to editor cursor line
   useEffect(() => {
@@ -221,109 +225,6 @@ export default function MarkdownView({ tab, scrollRef, lineNumbers, cursorLine }
     if (prev) prev.classList.remove('cursor-highlight')
     if (best) best.classList.add('cursor-highlight')
   }, [cursorLine])
-
-  // After render: assign data-line attributes via text matching + interpolation
-  const markdownBodyRef = useRef<HTMLDivElement>(null)
-  useEffect(() => {
-    if (!lineNumbers || !lineMap || !markdownBodyRef.current) return
-    const stripped = stripFrontmatter(tab.content)
-    const totalLines = stripped.split('\n').length
-    const fmMatch = tab.content.match(/^---\r?\n[\s\S]*?\r?\n---\r?\n?/)
-    const fmOffset = fmMatch ? fmMatch[0].split('\n').length - 1 : 0
-
-    // Collect leaf block elements (skip parents that contain matched children)
-    const allBlocks = Array.from(
-      markdownBodyRef.current.querySelectorAll('h1,h2,h3,h4,h5,h6,p,li,.code-block,pre:not(.code-block pre),table,hr')
-    ).filter(el => {
-      if (el.tagName === 'PRE' && el.closest('.code-block')) return false
-      if (el.tagName === 'LI' && el.querySelector('ul,ol')) {
-        // Keep the li but it will match its own text
-      }
-      return true
-    })
-
-    // Pass 1: text match — assign data-line where possible
-    const matched: { idx: number; line: number }[] = []
-    const tryMatch = (text: string): number | null => {
-      if (!text) return null
-      const t = text.trim()
-      if (t.length < 2) return null
-      for (const len of [60, 30, 15, 8]) {
-        const key = t.slice(0, len)
-        if (key.length >= 2 && lineMap.has(key)) return lineMap.get(key)!
-      }
-      return null
-    }
-
-    // Collect all text nodes and map them to their block parent
-    const blockLineMap = new Map<Element, number>()
-    const walker = document.createTreeWalker(
-      markdownBodyRef.current, NodeFilter.SHOW_TEXT, null
-    )
-    let textNode: Node | null
-    while ((textNode = walker.nextNode())) {
-      const text = textNode.textContent?.trim()
-      if (!text || text.length < 2) continue
-      const line = tryMatch(text)
-      if (line === null) continue
-      // Find the nearest block parent that's in our allBlocks list
-      let parent = textNode.parentElement
-      while (parent && parent !== markdownBodyRef.current) {
-        if (allBlocks.includes(parent)) {
-          if (!blockLineMap.has(parent)) blockLineMap.set(parent, line)
-          break
-        }
-        parent = parent.parentElement
-      }
-    }
-
-    allBlocks.forEach((el, idx) => {
-      el.removeAttribute('data-line')
-      el.removeAttribute('data-line-end')
-
-      // Try block-level text node match first
-      let line: number | null = blockLineMap.get(el) ?? null
-
-      // Try full element text
-      if (line === null) {
-        const fullText = (el.textContent || '').trim()
-        line = tryMatch(fullText)
-        if (line === null) {
-          const firstLine = fullText.split(/\n/)[0]?.trim()
-          if (firstLine && firstLine !== fullText) line = tryMatch(firstLine)
-        }
-      }
-
-      if (line !== null) {
-        el.setAttribute('data-line', String(line))
-        matched.push({ idx, line })
-      }
-    })
-
-    // Pass 2: interpolate unmatched elements from surrounding matches
-    // Add virtual anchors at start and end
-    const anchors = [
-      { idx: -1, line: 1 + fmOffset },
-      ...matched,
-      { idx: allBlocks.length, line: totalLines + fmOffset },
-    ]
-
-    for (let a = 0; a < anchors.length - 1; a++) {
-      const from = anchors[a]
-      const to = anchors[a + 1]
-      const gapCount = to.idx - from.idx - 1
-      if (gapCount <= 0) continue
-      const lineRange = to.line - from.line
-      for (let g = 1; g <= gapCount; g++) {
-        const elIdx = from.idx + g
-        if (elIdx < 0 || elIdx >= allBlocks.length) continue
-        const el = allBlocks[elIdx]
-        if (el.hasAttribute('data-line')) continue
-        const interpolated = Math.round(from.line + (lineRange * g) / (gapCount + 1))
-        el.setAttribute('data-line', String(interpolated))
-      }
-    }
-  }, [tab.content, lineNumbers, lineMap])
 
   // Fold/collapse sections by heading
   useEffect(() => {
@@ -393,9 +294,18 @@ export default function MarkdownView({ tab, scrollRef, lineNumbers, cursorLine }
   // Memoize the ReactMarkdown element so it isn't recreated (and the
   // components object isn't re-instantiated, which would force every
   // SyntaxHighlighter block to re-highlight) on unrelated re-renders.
+  const fmMatch = tab.content.match(/^---\r?\n[\s\S]*?\r?\n---\r?\n?/)
+  const fmOffset = fmMatch ? fmMatch[0].split('\n').length - 1 : 0
+  
   const markdownElement = useMemo(() => (
     <ReactMarkdown
-      remarkPlugins={[[remarkGfm, { singleTilde: false }], remarkMark, remarkInlineTag]}
+      remarkPlugins={[
+        [remarkGfm, { singleTilde: false }], 
+        remarkMark, 
+        remarkInlineTag, 
+        remarkHeadingId, 
+        ...(lineNumbers ? [[remarkLinePosition, { fmOffset }]] : [])
+      ] as any}
       urlTransform={(url) => url}
       components={{
         h1: (p) => <HeadingWithId level={1} {...p} />,
@@ -503,9 +413,8 @@ export default function MarkdownView({ tab, scrollRef, lineNumbers, cursorLine }
     >
       {processedContent}
     </ReactMarkdown>
-  ), [processedContent, isDark, resolveImageSrc, handleWikiLink])
+  ), [processedContent, isDark, resolveImageSrc, handleWikiLink, lineNumbers, fmOffset])
 
-  headingSlugCounts.clear()
 
   return (
     <div

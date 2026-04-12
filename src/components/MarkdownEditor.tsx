@@ -654,57 +654,171 @@ interface SplitViewProps {
   mdFiles: { name: string; path: string }[]
 }
 
-// ── Sync scroll: editor → preview ────────────────────────────────────────────
+// ── Sync scroll: editor <-> preview ────────────────────────────────────────────
 function useSyncScroll(editorViewRef: React.MutableRefObject<EditorView | null> | undefined, previewRef: React.RefObject<HTMLDivElement | null>) {
-  const lockRef = useRef(false)
+  const lockRef = useRef<'editor' | 'preview' | null>(null)
   const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
-  const rafRef = useRef<number | null>(null)
+  const rafRefEditor = useRef<number | null>(null)
+  const rafRefPreview = useRef<number | null>(null)
 
-  const syncImpl = useCallback(() => {
+  const buildSyncMap = useCallback(() => {
     const view = editorViewRef?.current
     const preview = previewRef.current
-    if (!view || !preview || lockRef.current) return
+    if (!view || !preview) return null
 
-    const rect = view.dom.getBoundingClientRect()
-    const topPos = view.posAtCoords({ x: rect.left + 10, y: rect.top + 5 })
-    if (topPos === null) return
-    const topLine = view.state.doc.lineAt(topPos).number
+    const els = Array.from(preview.querySelectorAll('[data-line]'))
+    if (els.length === 0) return null
 
-    // Find closest data-line element
-    const els = preview.querySelectorAll('[data-line]')
-    let best: Element | null = null
-    let bestDist = Infinity
+    const map: { line: number, editorTop: number, previewTop: number }[] = []
+    map.push({ line: 1, editorTop: 0, previewTop: 0 })
+
+    const containerRect = preview.getBoundingClientRect()
+    const scrollTop = preview.scrollTop
+
     for (const el of els) {
-      const ln = parseInt(el.getAttribute('data-line') || '0')
-      const d = Math.abs(ln - topLine)
-      if (d < bestDist) { bestDist = d; best = el }
+      const line = parseInt(el.getAttribute('data-line') || '0', 10)
+      if (line > 1) {
+        let editorTop = 0
+        try {
+          const l = view.state.doc.line(Math.min(line, view.state.doc.lines))
+          editorTop = view.lineBlockAt(l.from).top
+        } catch { continue }
+
+        const previewTop = el.getBoundingClientRect().top - containerRect.top + scrollTop
+        map.push({ line, editorTop, previewTop })
+      }
     }
-    if (best) {
-      lockRef.current = true
-      const container = preview
-      const elTop = (best as HTMLElement).offsetTop
-      container.scrollTop = elTop - 10
-      if (timerRef.current) clearTimeout(timerRef.current)
-      timerRef.current = setTimeout(() => { lockRef.current = false }, 80)
+
+    map.sort((a, b) => a.line - b.line)
+
+    const unique: typeof map = [map[0]]
+    for (let i = 1; i < map.length; i++) {
+        const m = map[i]
+        const prev = unique[unique.length - 1]
+        if (m.line === prev.line) continue // skip same line
+        
+        // Ensure monotonically increasing offsets
+        m.editorTop = Math.max(m.editorTop, prev.editorTop)
+        m.previewTop = Math.max(m.previewTop, prev.previewTop)
+        unique.push(m)
     }
+
+    const lastLine = view.state.doc.lines
+    const editorBottom = view.scrollDOM.scrollHeight - view.scrollDOM.clientHeight
+    const previewBottom = preview.scrollHeight - preview.clientHeight
+    
+    unique.push({ 
+        line: lastLine + 1, 
+        editorTop: Math.max(editorBottom, unique[unique.length - 1].editorTop), 
+        previewTop: Math.max(previewBottom, unique[unique.length - 1].previewTop) 
+    })
+
+    return unique
   }, [editorViewRef, previewRef])
 
-  // rAF-throttled wrapper: at most one sync per animation frame, so
-  // fast scrolls don't backlog dozens of DOM queries + posAtCoords calls.
-  const sync = useCallback(() => {
-    if (rafRef.current != null) return
-    rafRef.current = requestAnimationFrame(() => {
-      rafRef.current = null
-      syncImpl()
+  const syncEditorToPreviewImpl = useCallback(() => {
+    if (lockRef.current === 'preview') return
+    const map = buildSyncMap()
+    if (!map || map.length < 2) return
+
+    const view = editorViewRef?.current
+    const preview = previewRef.current
+    if (!view || !preview) return
+
+    const editorY = view.scrollDOM.scrollTop
+    if (editorY <= 0) {
+      lockRef.current = 'editor'
+      preview.scrollTop = 0
+      if (timerRef.current) clearTimeout(timerRef.current)
+      timerRef.current = setTimeout(() => { lockRef.current = null }, 80)
+      return
+    }
+
+    let prev = map[0]
+    let next = map[1] || map[0]
+    
+    for (let i = 0; i < map.length - 1; i++) {
+       prev = map[i]
+       next = map[i+1]
+       if (editorY <= next.editorTop) break
+    }
+
+    let ratio = 0
+    if (next.editorTop > prev.editorTop) {
+       ratio = (editorY - prev.editorTop) / (next.editorTop - prev.editorTop)
+    }
+
+    const previewY = prev.previewTop + (next.previewTop - prev.previewTop) * ratio
+    
+    lockRef.current = 'editor'
+    preview.scrollTop = previewY
+    if (timerRef.current) clearTimeout(timerRef.current)
+    timerRef.current = setTimeout(() => { lockRef.current = null }, 80)
+  }, [editorViewRef, previewRef, buildSyncMap])
+
+  const syncPreviewToEditorImpl = useCallback(() => {
+    if (lockRef.current === 'editor') return
+    const map = buildSyncMap()
+    if (!map || map.length < 2) return
+
+    const view = editorViewRef?.current
+    const preview = previewRef.current
+    if (!view || !preview) return
+
+    const previewY = preview.scrollTop
+    if (previewY <= 0) {
+      lockRef.current = 'preview'
+      view.scrollDOM.scrollTop = 0
+      if (timerRef.current) clearTimeout(timerRef.current)
+      timerRef.current = setTimeout(() => { lockRef.current = null }, 80)
+      return
+    }
+
+    let prev = map[0]
+    let next = map[1] || map[0]
+    
+    for (let i = 0; i < map.length - 1; i++) {
+       prev = map[i]
+       next = map[i+1]
+       if (previewY <= next.previewTop) break
+    }
+
+    let ratio = 0
+    if (next.previewTop > prev.previewTop) {
+       ratio = (previewY - prev.previewTop) / (next.previewTop - prev.previewTop)
+    }
+
+    const editorY = prev.editorTop + (next.editorTop - prev.editorTop) * ratio
+
+    lockRef.current = 'preview'
+    view.scrollDOM.scrollTop = editorY
+    if (timerRef.current) clearTimeout(timerRef.current)
+    timerRef.current = setTimeout(() => { lockRef.current = null }, 80)
+  }, [editorViewRef, previewRef, buildSyncMap])
+
+  const onEditorScroll = useCallback(() => {
+    if (rafRefEditor.current != null) return
+    rafRefEditor.current = requestAnimationFrame(() => {
+      rafRefEditor.current = null
+      syncEditorToPreviewImpl()
     })
-  }, [syncImpl])
+  }, [syncEditorToPreviewImpl])
+
+  const onPreviewScroll = useCallback(() => {
+    if (rafRefPreview.current != null) return
+    rafRefPreview.current = requestAnimationFrame(() => {
+      rafRefPreview.current = null
+      syncPreviewToEditorImpl()
+    })
+  }, [syncPreviewToEditorImpl])
 
   useEffect(() => () => {
-    if (rafRef.current != null) cancelAnimationFrame(rafRef.current)
+    if (rafRefEditor.current != null) cancelAnimationFrame(rafRefEditor.current)
+    if (rafRefPreview.current != null) cancelAnimationFrame(rafRefPreview.current)
     if (timerRef.current) clearTimeout(timerRef.current)
   }, [])
 
-  return sync
+  return { onEditorScroll, onPreviewScroll }
 }
 
 // ── Markdown Formatting Toolbar ──────────────────────────────────────────────
@@ -1031,7 +1145,7 @@ function SplitView({ tab, onSave, onChange, showTOC, editorViewRef, projectPath,
   const [isDragging, setIsDragging] = useState(false)
   const [cursorLine, setCursorLine] = useState(0)
   const previewScrollRef = useRef<HTMLDivElement | null>(null)
-  const syncScroll = useSyncScroll(editorViewRef, previewScrollRef)
+  const { onEditorScroll, onPreviewScroll } = useSyncScroll(editorViewRef, previewScrollRef)
 
   const handleDividerMouseDown = (e: React.MouseEvent) => {
     e.preventDefault()
@@ -1067,7 +1181,7 @@ function SplitView({ tab, onSave, onChange, showTOC, editorViewRef, projectPath,
           onSave={onSave}
           onChange={onChange}
           editorViewRef={editorViewRef}
-          onScroll={syncScroll}
+          onScroll={onEditorScroll}
           onCursorLine={setCursorLine}
           mdFiles={mdFiles}
         />
@@ -1085,7 +1199,7 @@ function SplitView({ tab, onSave, onChange, showTOC, editorViewRef, projectPath,
           <div className="px-3 py-1 text-xs text-gray-400 dark:text-gray-500 bg-gray-50 dark:bg-gray-800 border-b border-gray-200 dark:border-gray-700 flex-shrink-0">
             미리보기
           </div>
-          <MarkdownView tab={tab} scrollRef={previewScrollRef} lineNumbers cursorLine={cursorLine} />
+          <MarkdownView tab={tab} scrollRef={previewScrollRef} lineNumbers cursorLine={cursorLine} onScroll={onPreviewScroll} />
         </div>
         {showTOC && (
           <RightPanel
