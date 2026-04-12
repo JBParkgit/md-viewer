@@ -424,6 +424,7 @@ export default function ProjectTree({ project, projectIndex, searchQuery, onOpen
       onDragOver={(e) => {
         if (e.dataTransfer.types.includes('application/x-filepath') || e.dataTransfer.types.includes('application/x-filepaths') || e.dataTransfer.types.includes('Files')) {
           e.preventDefault()
+          e.stopPropagation()
           e.dataTransfer.dropEffect = e.dataTransfer.types.includes('Files') ? 'copy' : 'move'
           setHeaderDragOver(true)
         }
@@ -466,7 +467,7 @@ export default function ProjectTree({ project, projectIndex, searchQuery, onOpen
       {/* Project header */}
       <div
         draggable
-        className={`group flex flex-wrap items-center gap-x-2 gap-y-0.5 px-2 py-1.5 cursor-pointer transition-colors ${headerDragOver ? 'bg-blue-50 dark:bg-blue-900/30 outline outline-1 outline-blue-400' : isRenaming ? '' : color.header}`}
+        className={`group flex flex-wrap items-center gap-x-2 gap-y-0.5 px-2 py-1.5 cursor-pointer transition-colors ${headerDragOver ? 'bg-blue-50 dark:bg-blue-900/30 outline outline-1 outline-blue-400 [&>*]:pointer-events-none' : isRenaming ? '' : color.header}`}
         onClick={() => { if (!isRenaming) toggleProjectCollapsed(project.id) }}
         onContextMenu={(e) => { e.preventDefault(); if (!isRenaming) setContextMenu({ x: e.clientX, y: e.clientY }) }}
         onDragStart={(e) => {

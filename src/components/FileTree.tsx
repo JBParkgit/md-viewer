@@ -258,6 +258,7 @@ function FileRow({ node, onOpenFile, onOpenFilePinned, searchQuery, depth, proje
   const handleDirDragOver = (e: React.DragEvent) => {
     if (e.dataTransfer.types.includes('application/x-filepath') || e.dataTransfer.types.includes('application/x-filepaths') || e.dataTransfer.types.includes('Files')) {
       e.preventDefault()
+      e.stopPropagation()
       e.dataTransfer.dropEffect = e.dataTransfer.types.includes('Files') ? 'copy' : 'move'
       setIsDragOver(true)
     }
@@ -320,7 +321,7 @@ function FileRow({ node, onOpenFile, onOpenFilePinned, searchQuery, depth, proje
           onKeyDown={handleKeyDown}
           tabIndex={0}
           className={`flex items-center gap-1.5 py-1 cursor-pointer rounded text-xs focus:outline-none focus:ring-1 focus:ring-inset focus:ring-blue-400 ${
-            isDragOver ? 'bg-blue-50 dark:bg-blue-900/30 outline outline-1 outline-blue-400'
+            isDragOver ? 'bg-blue-50 dark:bg-blue-900/30 outline outline-1 outline-blue-400 [&>*]:pointer-events-none'
             : isSelected ? 'bg-blue-100 dark:bg-blue-900/40'
             : 'hover:bg-gray-100 dark:hover:bg-gray-700'
           }`}
@@ -467,7 +468,7 @@ function FileRow({ node, onOpenFile, onOpenFilePinned, searchQuery, depth, proje
         tabIndex={0}
         className={`flex items-center gap-1.5 py-1 rounded text-xs group cursor-pointer focus:outline-none focus:ring-1 focus:ring-inset focus:ring-blue-400 ${
           isDragOver
-            ? 'bg-blue-50 dark:bg-blue-900/30 outline outline-1 outline-blue-400'
+            ? 'bg-blue-50 dark:bg-blue-900/30 outline outline-1 outline-blue-400 [&>*]:pointer-events-none'
             : isActiveFile
             ? 'bg-blue-100 dark:bg-blue-900/50 text-blue-700 dark:text-blue-300'
             : isSelected
