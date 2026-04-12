@@ -156,6 +156,24 @@ html, body, #root {
   line-height: 1.6;
 }
 
+/* Code block wrapper */
+.markdown-body .code-block {
+  margin: 1em 0;
+}
+
+/* Cursor position highlight in preview */
+.markdown-body .cursor-highlight {
+  background: rgba(59, 130, 246, 0.08);
+  border-left: 2px solid #3b82f6;
+  padding-left: 6px;
+  margin-left: -8px;
+  transition: background 0.15s, border-color 0.15s;
+}
+
+.dark .markdown-body .cursor-highlight {
+  background: rgba(59, 130, 246, 0.12);
+}
+
 .dark .markdown-body .inline-tag {
   background: #1e3a5f;
   color: #60a5fa;

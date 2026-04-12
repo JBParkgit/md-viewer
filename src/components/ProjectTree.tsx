@@ -38,6 +38,7 @@ export default function ProjectTree({ project, projectIndex, searchQuery, onOpen
   const [gitStatusMap, setGitStatusMap] = useState<GitStatusMap>({})
   const [gitChangedCount, setGitChangedCount] = useState(0)
   const [hasRemote, setHasRemote] = useState(false)
+  const [remoteUrl, setRemoteUrl] = useState('')
   const [isPulling, setIsPulling] = useState(false)
 
   // Multi-selection
@@ -108,6 +109,10 @@ export default function ProjectTree({ project, projectIndex, searchQuery, onOpen
       el.style.top = `${nextTop}px`
     }
   }, [contextMenu])
+  const [installedIDEs, setInstalledIDEs] = useState<{ id: string; name: string; cmd: string }[]>([])
+  useEffect(() => {
+    window.electronAPI.detectIDEs().then(setInstalledIDEs)
+  }, [])
   const [isRenaming, setIsRenaming] = useState(false)
   const [renameValue, setRenameValue] = useState(project.name)
   const [isCreatingFile, setIsCreatingFile] = useState(false)
@@ -171,7 +176,9 @@ export default function ProjectTree({ project, projectIndex, searchQuery, onOpen
         window.electronAPI.gitRemoteGet(project.path),
       ])
       setGitBranch(branchRes.success ? branchRes.output || '' : null)
-      setHasRemote(remoteRes.success && !!remoteRes.output?.trim())
+      const remoteUrlVal = remoteRes.success ? (remoteRes.output?.trim() || '') : ''
+      setHasRemote(!!remoteUrlVal)
+      setRemoteUrl(remoteUrlVal)
       if (statusRes.success && statusRes.output) {
         const map: GitStatusMap = {}
         let count = 0
@@ -985,6 +992,27 @@ export default function ProjectTree({ project, projectIndex, searchQuery, onOpen
               탐색기에서 열기
             </button>
             <button
+              onClick={() => { window.electronAPI.openTerminal(project.path); setContextMenu(null) }}
+              className="w-full flex items-center gap-2 px-3 py-1.5 text-xs hover:bg-gray-100 dark:hover:bg-gray-700 text-left"
+            >
+              <svg className="w-3.5 h-3.5 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 9l3 3-3 3m5 0h3M5 20h14a2 2 0 002-2V6a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
+              </svg>
+              터미널에서 열기
+            </button>
+            {installedIDEs.map(ide => (
+              <button
+                key={ide.id}
+                onClick={() => { window.electronAPI.openInIDE(ide.cmd, project.path); setContextMenu(null) }}
+                className="w-full flex items-center gap-2 px-3 py-1.5 text-xs hover:bg-gray-100 dark:hover:bg-gray-700 text-left"
+              >
+                <svg className="w-3.5 h-3.5 text-purple-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 20l4-16m4 4l4 4-4 4M6 16l-4-4 4-4" />
+                </svg>
+                {ide.name}로 열기
+              </button>
+            ))}
+            <button
               onClick={() => { loadNodes(); loadGitStatus(); setContextMenu(null) }}
               className="w-full flex items-center gap-2 px-3 py-1.5 text-xs hover:bg-gray-100 dark:hover:bg-gray-700 text-left"
             >
@@ -1014,7 +1042,7 @@ export default function ProjectTree({ project, projectIndex, searchQuery, onOpen
               </button>
             ) : (
               <button
-                onClick={() => { setContextMenu(null); setShowRemoteInput(true) }}
+                onClick={() => { setContextMenu(null); setRemoteInputValue(remoteUrl); setShowRemoteInput(true) }}
                 className="w-full flex items-center gap-2 px-3 py-1.5 text-xs hover:bg-gray-100 dark:hover:bg-gray-700 text-left"
               >
                 <svg className="w-3.5 h-3.5 text-blue-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">

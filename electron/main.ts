@@ -475,6 +475,52 @@ ipcMain.handle('shell:showItemInFolder', (_e, filePath: string) => {
   shell.showItemInFolder(filePath)
 })
 
+ipcMain.handle('shell:openTerminal', (_e, dirPath: string) => {
+  const { exec } = require('child_process')
+  if (process.platform === 'win32') {
+    exec(`start cmd /k "cd /d "${dirPath}""`)
+  } else if (process.platform === 'darwin') {
+    exec(`open -a Terminal "${dirPath}"`)
+  } else {
+    exec(`x-terminal-emulator --working-directory="${dirPath}"`)
+  }
+})
+
+// ── IPC: Detect installed IDEs ─────────────────────────────────────────────
+const IDE_LIST = [
+  { id: 'code', name: 'VS Code', cmd: 'code' },
+  { id: 'cursor', name: 'Cursor', cmd: 'cursor' },
+  { id: 'windsurf', name: 'Windsurf', cmd: 'windsurf' },
+  { id: 'antigravity', name: 'Antigravity', cmd: 'antigravity' },
+]
+
+let detectedIDEs: { id: string; name: string; cmd: string }[] | null = null
+
+async function detectIDEs(): Promise<{ id: string; name: string; cmd: string }[]> {
+  if (detectedIDEs) return detectedIDEs
+  const which = process.platform === 'win32' ? 'where' : 'which'
+  const results: { id: string; name: string; cmd: string }[] = []
+  for (const ide of IDE_LIST) {
+    try {
+      await new Promise<void>((resolve, reject) => {
+        execFile(which, [ide.cmd], (err) => err ? reject(err) : resolve())
+      })
+      results.push(ide)
+    } catch { /* not installed */ }
+  }
+  detectedIDEs = results
+  return results
+}
+
+ipcMain.handle('shell:detectIDEs', async () => {
+  return detectIDEs()
+})
+
+ipcMain.handle('shell:openInIDE', async (_e, ideCmd: string, dirPath: string) => {
+  const { exec } = require('child_process')
+  exec(`"${ideCmd}" "${dirPath}"`)
+})
+
 // ── IPC: Open file with default OS app ───────────────────────────────────────
 ipcMain.handle('shell:openPath', async (_e, filePath: string) => {
   const err = await shell.openPath(filePath)

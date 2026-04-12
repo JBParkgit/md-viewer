@@ -1029,6 +1029,7 @@ function MdToolbar({ editorViewRef, onTableClick }: MdToolbarProps) {
 function SplitView({ tab, onSave, onChange, showTOC, editorViewRef, projectPath, mdFiles }: SplitViewProps) {
   const [splitRatio, setSplitRatio] = useState(50)
   const [isDragging, setIsDragging] = useState(false)
+  const [cursorLine, setCursorLine] = useState(0)
   const previewScrollRef = useRef<HTMLDivElement | null>(null)
   const syncScroll = useSyncScroll(editorViewRef, previewScrollRef)
 
@@ -1067,6 +1068,7 @@ function SplitView({ tab, onSave, onChange, showTOC, editorViewRef, projectPath,
           onChange={onChange}
           editorViewRef={editorViewRef}
           onScroll={syncScroll}
+          onCursorLine={setCursorLine}
           mdFiles={mdFiles}
         />
       </div>
@@ -1083,7 +1085,7 @@ function SplitView({ tab, onSave, onChange, showTOC, editorViewRef, projectPath,
           <div className="px-3 py-1 text-xs text-gray-400 dark:text-gray-500 bg-gray-50 dark:bg-gray-800 border-b border-gray-200 dark:border-gray-700 flex-shrink-0">
             미리보기
           </div>
-          <MarkdownView tab={tab} scrollRef={previewScrollRef} lineNumbers />
+          <MarkdownView tab={tab} scrollRef={previewScrollRef} lineNumbers cursorLine={cursorLine} />
         </div>
         {showTOC && (
           <RightPanel

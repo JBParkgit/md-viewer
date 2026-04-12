@@ -22,6 +22,7 @@ interface Props {
   onChange: (content: string) => void
   editorViewRef?: MutableRefObject<EditorView | null>
   onScroll?: () => void
+  onCursorLine?: (line: number) => void
   mdFiles?: { name: string; path: string }[]
 }
 
@@ -92,7 +93,7 @@ const darkTheme = EditorView.theme({
   },
 }, { dark: true })
 
-export default function LiveEditor({ tab, onSave, onChange, editorViewRef, onScroll, mdFiles = [] }: Props) {
+export default function LiveEditor({ tab, onSave, onChange, editorViewRef, onScroll, onCursorLine, mdFiles = [] }: Props) {
   const { darkMode, fontSize, projects, spellcheckEnabled } = useAppStore()
   const isDark = darkMode === 'dark' ||
     (darkMode === 'system' && document.documentElement.classList.contains('dark'))
@@ -411,6 +412,17 @@ export default function LiveEditor({ tab, onSave, onChange, editorViewRef, onScr
     })
   , [])
 
+  const onCursorLineRef = useRef(onCursorLine)
+  onCursorLineRef.current = onCursorLine
+
+  const cursorLineListener = useMemo(() =>
+    EditorView.updateListener.of((update) => {
+      if (update.selectionSet && onCursorLineRef.current) {
+        const line = update.state.doc.lineAt(update.state.selection.main.head).number
+        onCursorLineRef.current(line)
+      }
+    }), [])
+
   const extensions = useMemo(() => [
     markdown({
       base: markdownLanguage,
@@ -423,8 +435,9 @@ export default function LiveEditor({ tab, onSave, onChange, editorViewRef, onScr
     saveKeymap,
     pasteHandler,
     wikiLinkCompletion,
+    cursorLineListener,
     isDark ? darkTheme : lightTheme,
-  ], [isDark, saveKeymap, pasteHandler, wikiLinkCompletion, spellcheckEnabled])
+  ], [isDark, saveKeymap, pasteHandler, wikiLinkCompletion, spellcheckEnabled, cursorLineListener])
 
   const handleChange = useCallback((value: string) => {
     if (tab.isPreview) {

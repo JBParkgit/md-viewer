@@ -15,6 +15,7 @@ interface Props {
   tab: Tab
   scrollRef?: React.MutableRefObject<HTMLDivElement | null>
   lineNumbers?: boolean
+  cursorLine?: number
 }
 
 function slugify(text: string): string {
@@ -93,7 +94,7 @@ function TagBadges({ tags }: { tags: string[] }) {
   )
 }
 
-export default function MarkdownView({ tab, scrollRef, lineNumbers }: Props) {
+export default function MarkdownView({ tab, scrollRef, lineNumbers, cursorLine }: Props) {
   // Individual selectors: keep MarkdownView from re-rendering on every
   // unrelated store update (tabs array mutations, kanban state, etc.).
   const darkMode = useAppStore(s => s.darkMode)
@@ -141,17 +142,37 @@ export default function MarkdownView({ tab, scrollRef, lineNumbers }: Props) {
     const stripped = stripFrontmatter(tab.content)
     const lines = stripped.split('\n')
     const map: Map<string, number> = new Map()
-    // Map first few words of each non-empty line to its line number (in stripped content)
-    // We'll use this to match rendered text to source lines
     const fmLines = tab.content.split('\n')
     const fmMatch = tab.content.match(/^---\r?\n[\s\S]*?\r?\n---\r?\n?/)
     const offset = fmMatch ? fmMatch[0].split('\n').length - 1 : 0
+    const addKey = (text: string, lineNum: number) => {
+      if (!text) return
+      for (const len of [60, 30, 15, 8]) {
+        const key = text.slice(0, len)
+        if (key.length >= 2 && !map.has(key)) map.set(key, lineNum)
+      }
+    }
+
     lines.forEach((line, i) => {
       const trimmed = line.trim()
-      if (trimmed) {
-        // Store line number (1-based, accounting for frontmatter offset)
-        map.set(trimmed.slice(0, 60), i + 1 + offset)
-      }
+      if (!trimmed || trimmed === '---' || trimmed === '```' || /^\|[-:| ]+\|$/.test(trimmed)) return
+      const lineNum = i + 1 + offset
+      // Store raw trimmed line
+      addKey(trimmed, lineNum)
+      // Also store with markdown syntax stripped so rendered text matches
+      const rendered = trimmed
+        .replace(/^#{1,6}\s+/, '')       // headings
+        .replace(/^[-*+]\s+/, '')        // unordered lists
+        .replace(/^\d+\.\s+/, '')        // ordered lists
+        .replace(/^>\s*/, '')            // blockquotes
+        .replace(/^- \[[ x]\]\s*/i, '') // task lists
+        .replace(/\*\*|__/g, '')         // bold
+        .replace(/\*|_/g, '')            // italic
+        .replace(/~~(.+?)~~/g, '$1')     // strikethrough
+        .replace(/`([^`]+)`/g, '$1')     // inline code
+        .replace(/\[([^\]]+)\]\([^)]+\)/g, '$1') // links
+        .trim()
+      if (rendered && rendered !== trimmed) addKey(rendered, lineNum)
     })
     return map
   }, [tab.content, lineNumbers])
@@ -180,17 +201,128 @@ export default function MarkdownView({ tab, scrollRef, lineNumbers }: Props) {
     if (scrollSaveTimerRef.current) clearTimeout(scrollSaveTimerRef.current)
   }, [])
 
-  // After render: assign data-line attributes to block elements
+  // Highlight preview element closest to editor cursor line
+  useEffect(() => {
+    if (!cursorLine || !markdownBodyRef.current) return
+    const els = markdownBodyRef.current.querySelectorAll('[data-line]')
+    let best: Element | null = null
+    let bestDist = Infinity
+    for (const el of els) {
+      const start = parseInt(el.getAttribute('data-line') || '0')
+      const end = parseInt(el.getAttribute('data-line-end') || '0') || start
+      // If cursor is inside a range block, distance is 0
+      if (cursorLine >= start && cursorLine <= end) {
+        best = el; bestDist = 0; break
+      }
+      const d = Math.min(Math.abs(start - cursorLine), Math.abs(end - cursorLine))
+      if (d < bestDist) { bestDist = d; best = el }
+    }
+    const prev = markdownBodyRef.current.querySelector('.cursor-highlight')
+    if (prev) prev.classList.remove('cursor-highlight')
+    if (best) best.classList.add('cursor-highlight')
+  }, [cursorLine])
+
+  // After render: assign data-line attributes via text matching + interpolation
   const markdownBodyRef = useRef<HTMLDivElement>(null)
   useEffect(() => {
     if (!lineNumbers || !lineMap || !markdownBodyRef.current) return
-    const blocks = markdownBodyRef.current.querySelectorAll('h1,h2,h3,h4,h5,h6,p,li,blockquote,pre,table,hr')
-    blocks.forEach(el => {
-      const text = (el.textContent || '').trim().slice(0, 60)
-      if (text && lineMap.has(text)) {
-        el.setAttribute('data-line', String(lineMap.get(text)))
+    const stripped = stripFrontmatter(tab.content)
+    const totalLines = stripped.split('\n').length
+    const fmMatch = tab.content.match(/^---\r?\n[\s\S]*?\r?\n---\r?\n?/)
+    const fmOffset = fmMatch ? fmMatch[0].split('\n').length - 1 : 0
+
+    // Collect leaf block elements (skip parents that contain matched children)
+    const allBlocks = Array.from(
+      markdownBodyRef.current.querySelectorAll('h1,h2,h3,h4,h5,h6,p,li,.code-block,pre:not(.code-block pre),table,hr')
+    ).filter(el => {
+      if (el.tagName === 'PRE' && el.closest('.code-block')) return false
+      if (el.tagName === 'LI' && el.querySelector('ul,ol')) {
+        // Keep the li but it will match its own text
+      }
+      return true
+    })
+
+    // Pass 1: text match — assign data-line where possible
+    const matched: { idx: number; line: number }[] = []
+    const tryMatch = (text: string): number | null => {
+      if (!text) return null
+      const t = text.trim()
+      if (t.length < 2) return null
+      for (const len of [60, 30, 15, 8]) {
+        const key = t.slice(0, len)
+        if (key.length >= 2 && lineMap.has(key)) return lineMap.get(key)!
+      }
+      return null
+    }
+
+    // Collect all text nodes and map them to their block parent
+    const blockLineMap = new Map<Element, number>()
+    const walker = document.createTreeWalker(
+      markdownBodyRef.current, NodeFilter.SHOW_TEXT, null
+    )
+    let textNode: Node | null
+    while ((textNode = walker.nextNode())) {
+      const text = textNode.textContent?.trim()
+      if (!text || text.length < 2) continue
+      const line = tryMatch(text)
+      if (line === null) continue
+      // Find the nearest block parent that's in our allBlocks list
+      let parent = textNode.parentElement
+      while (parent && parent !== markdownBodyRef.current) {
+        if (allBlocks.includes(parent)) {
+          if (!blockLineMap.has(parent)) blockLineMap.set(parent, line)
+          break
+        }
+        parent = parent.parentElement
+      }
+    }
+
+    allBlocks.forEach((el, idx) => {
+      el.removeAttribute('data-line')
+      el.removeAttribute('data-line-end')
+
+      // Try block-level text node match first
+      let line: number | null = blockLineMap.get(el) ?? null
+
+      // Try full element text
+      if (line === null) {
+        const fullText = (el.textContent || '').trim()
+        line = tryMatch(fullText)
+        if (line === null) {
+          const firstLine = fullText.split(/\n/)[0]?.trim()
+          if (firstLine && firstLine !== fullText) line = tryMatch(firstLine)
+        }
+      }
+
+      if (line !== null) {
+        el.setAttribute('data-line', String(line))
+        matched.push({ idx, line })
       }
     })
+
+    // Pass 2: interpolate unmatched elements from surrounding matches
+    // Add virtual anchors at start and end
+    const anchors = [
+      { idx: -1, line: 1 + fmOffset },
+      ...matched,
+      { idx: allBlocks.length, line: totalLines + fmOffset },
+    ]
+
+    for (let a = 0; a < anchors.length - 1; a++) {
+      const from = anchors[a]
+      const to = anchors[a + 1]
+      const gapCount = to.idx - from.idx - 1
+      if (gapCount <= 0) continue
+      const lineRange = to.line - from.line
+      for (let g = 1; g <= gapCount; g++) {
+        const elIdx = from.idx + g
+        if (elIdx < 0 || elIdx >= allBlocks.length) continue
+        const el = allBlocks[elIdx]
+        if (el.hasAttribute('data-line')) continue
+        const interpolated = Math.round(from.line + (lineRange * g) / (gapCount + 1))
+        el.setAttribute('data-line', String(interpolated))
+      }
+    }
   }, [tab.content, lineNumbers, lineMap])
 
   // Fold/collapse sections by heading
@@ -285,14 +417,16 @@ export default function MarkdownView({ tab, scrollRef, lineNumbers }: Props) {
           }
           if (isBlock) {
             return (
-              <SyntaxHighlighter
-                style={isDark ? oneDark : oneLight}
-                language={match[1]}
-                PreTag="div"
-                customStyle={{ margin: '1em 0', borderRadius: '8px', fontSize: '0.875em' }}
-              >
-                {String(children).replace(/\n$/, '')}
-              </SyntaxHighlighter>
+              <pre className="code-block">
+                <SyntaxHighlighter
+                  style={isDark ? oneDark : oneLight}
+                  language={match[1]}
+                  PreTag="div"
+                  customStyle={{ margin: 0, borderRadius: '8px', fontSize: '0.875em' }}
+                >
+                  {String(children).replace(/\n$/, '')}
+                </SyntaxHighlighter>
+              </pre>
             )
           }
           return <code className={className} {...props}>{children}</code>

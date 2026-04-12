@@ -64,6 +64,9 @@ export interface ElectronAPI {
   cloneFolder: () => Promise<string | null>
   getPathForFile: (file: File) => string
   showItemInFolder: (path: string) => Promise<void>
+  openTerminal: (path: string) => Promise<void>
+  detectIDEs: () => Promise<{ id: string; name: string; cmd: string }[]>
+  openInIDE: (ideCmd: string, dirPath: string) => Promise<void>
   openPath: (path: string) => Promise<string | null>
   openInObsidian: (path: string) => Promise<{ success: boolean; error?: string }>
   startDrag: (filePath: string) => void
