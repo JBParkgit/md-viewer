@@ -59,15 +59,21 @@ function HeadingWithId({ level, children, node, ...props }: { level: number; chi
   const count = headingSlugCounts.get(slug) ?? 0
   if (count > 0) slug = `${slug}-${count}`
   headingSlugCounts.set(slug, count + 1)
-  const tagProps = { id: slug, ...props }
-  switch (level) {
-    case 1: return <h1 {...tagProps}>{children}</h1>
-    case 2: return <h2 {...tagProps}>{children}</h2>
-    case 3: return <h3 {...tagProps}>{children}</h3>
-    case 4: return <h4 {...tagProps}>{children}</h4>
-    case 5: return <h5 {...tagProps}>{children}</h5>
-    default: return <h6 {...tagProps}>{children}</h6>
-  }
+  const Tag = `h${level}` as keyof JSX.IntrinsicElements
+  return (
+    <Tag id={slug} data-fold-level={level} {...props}>
+      <span
+        className="fold-toggle"
+        data-fold-target={slug}
+        title="접기/펼치기"
+      >
+        <svg className="fold-chevron" viewBox="0 0 20 20" fill="currentColor" width="16" height="16">
+          <path fillRule="evenodd" d="M5.293 7.293a1 1 0 011.414 0L10 10.586l3.293-3.293a1 1 0 111.414 1.414l-4 4a1 1 0 01-1.414 0l-4-4a1 1 0 010-1.414z" clipRule="evenodd" />
+        </svg>
+      </span>
+      {children}
+    </Tag>
+  )
 }
 
 function TagBadges({ tags }: { tags: string[] }) {
@@ -185,6 +191,55 @@ export default function MarkdownView({ tab, scrollRef, lineNumbers }: Props) {
       }
     })
   }, [tab.content, lineNumbers, lineMap])
+
+  // Fold/collapse sections by heading
+  useEffect(() => {
+    const container = markdownBodyRef.current
+    if (!container) return
+
+    function toggleSection(heading: HTMLElement) {
+      const level = parseInt(heading.getAttribute('data-fold-level') || '0', 10)
+      if (!level) return
+      const collapsed = heading.classList.toggle('folded')
+      let sibling = heading.nextElementSibling as HTMLElement | null
+      while (sibling) {
+        const sibLevel = sibling.getAttribute('data-fold-level')
+        if (sibLevel && parseInt(sibLevel, 10) <= level) break
+        if (collapsed) {
+          sibling.setAttribute('data-folded-by', heading.id)
+          sibling.style.display = 'none'
+        } else {
+          if (sibling.getAttribute('data-folded-by') === heading.id) {
+            sibling.removeAttribute('data-folded-by')
+            sibling.style.display = ''
+          }
+          if (sibling.getAttribute('data-fold-level') && sibling.classList.contains('folded')) {
+            const innerLevel = parseInt(sibling.getAttribute('data-fold-level')!, 10)
+            let inner = sibling.nextElementSibling as HTMLElement | null
+            while (inner) {
+              const il = inner.getAttribute('data-fold-level')
+              if (il && parseInt(il, 10) <= innerLevel) break
+              inner = inner.nextElementSibling as HTMLElement | null
+            }
+            sibling = inner
+            continue
+          }
+        }
+        sibling = sibling.nextElementSibling as HTMLElement | null
+      }
+    }
+
+    function handleClick(e: Event) {
+      const target = e.target as HTMLElement
+      const toggle = target.closest('.fold-toggle') as HTMLElement | null
+      if (!toggle) return
+      const heading = toggle.parentElement as HTMLElement | null
+      if (heading) toggleSection(heading)
+    }
+
+    container.addEventListener('click', handleClick)
+    return () => container.removeEventListener('click', handleClick)
+  }, [tab.content])
 
   // Convert local file paths to file:// URLs
   const resolveImageSrc = useCallback((src: string): string => {

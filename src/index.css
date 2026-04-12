@@ -96,6 +96,52 @@ html, body, #root {
   border-color: #374151;
 }
 
+/* Fold/collapse toggle on headings */
+.markdown-body .fold-toggle {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 20px;
+  height: 20px;
+  margin-right: 4px;
+  cursor: pointer;
+  border-radius: 4px;
+  opacity: 0;
+  transition: opacity 0.15s, background-color 0.15s;
+  vertical-align: middle;
+}
+
+.markdown-body h1:hover .fold-toggle,
+.markdown-body h2:hover .fold-toggle,
+.markdown-body h3:hover .fold-toggle,
+.markdown-body h4:hover .fold-toggle,
+.markdown-body h5:hover .fold-toggle,
+.markdown-body h6:hover .fold-toggle,
+.markdown-body .folded .fold-toggle {
+  opacity: 0.6;
+}
+
+.markdown-body .fold-toggle:hover {
+  opacity: 1 !important;
+  background: rgba(0, 0, 0, 0.08);
+}
+
+.dark .markdown-body .fold-toggle:hover {
+  background: rgba(255, 255, 255, 0.1);
+}
+
+.markdown-body .fold-chevron {
+  transition: transform 0.2s ease;
+}
+
+.markdown-body .folded .fold-chevron {
+  transform: rotate(-90deg);
+}
+
+.markdown-body .folded {
+  opacity: 0.7;
+}
+
 .markdown-body p {
   margin-bottom: 1em;
 }
@@ -104,6 +150,32 @@ html, body, #root {
 .markdown-body ol {
   padding-left: 2em;
   margin-bottom: 1em;
+}
+
+.markdown-body ul {
+  list-style: disc;
+}
+
+.markdown-body ul ul {
+  list-style: circle;
+}
+
+.markdown-body ul ul ul {
+  list-style: square;
+}
+
+.markdown-body ol {
+  list-style: decimal;
+}
+
+.markdown-body ul.contains-task-list,
+.markdown-body ul.contains-task-list ul.contains-task-list {
+  list-style: none;
+  padding-left: 1.2em;
+}
+
+.markdown-body li.task-list-item {
+  list-style: none;
 }
 
 .markdown-body li {

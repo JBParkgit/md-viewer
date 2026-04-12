@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
 import { useAppStore, type Project } from '../stores/useAppStore'
 import FileTree from './FileTree'
 import type { FileNode } from '../types/electron'
@@ -89,6 +89,25 @@ export default function ProjectTree({ project, projectIndex, searchQuery, onOpen
     toggleOpenDirAction(project.id, path, isOpen)
   }
   const [contextMenu, setContextMenu] = useState<{ x: number; y: number } | null>(null)
+  const contextMenuRef = useRef<HTMLDivElement>(null)
+  useLayoutEffect(() => {
+    if (!contextMenu || !contextMenuRef.current) return
+    const el = contextMenuRef.current
+    const rect = el.getBoundingClientRect()
+    const margin = 4
+    let nextLeft = contextMenu.x
+    let nextTop = contextMenu.y
+    if (nextLeft + rect.width + margin > window.innerWidth) {
+      nextLeft = Math.max(margin, window.innerWidth - rect.width - margin)
+    }
+    if (nextTop + rect.height + margin > window.innerHeight) {
+      nextTop = Math.max(margin, window.innerHeight - rect.height - margin)
+    }
+    if (nextLeft !== contextMenu.x || nextTop !== contextMenu.y) {
+      el.style.left = `${nextLeft}px`
+      el.style.top = `${nextTop}px`
+    }
+  }, [contextMenu])
   const [isRenaming, setIsRenaming] = useState(false)
   const [renameValue, setRenameValue] = useState(project.name)
   const [isCreatingFile, setIsCreatingFile] = useState(false)
@@ -894,6 +913,7 @@ export default function ProjectTree({ project, projectIndex, searchQuery, onOpen
         <>
           <div className="fixed inset-0 z-40" onClick={() => { setContextMenu(null); setShowColorPicker(false) }} />
           <div
+            ref={contextMenuRef}
             className="fixed z-50 bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-600 rounded-lg shadow-xl py-1 min-w-44"
             style={{ left: contextMenu.x, top: contextMenu.y }}
           >

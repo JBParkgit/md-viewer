@@ -1,4 +1,4 @@
-import { useState, useRef, useMemo, useEffect } from 'react'
+import { useState, useRef, useMemo, useEffect, useLayoutEffect } from 'react'
 import { useAppStore } from '../stores/useAppStore'
 import { useWorkflowStore } from '../stores/useWorkflowStore'
 import { WORKFLOW_STATUS_ICONS, WORKFLOW_STATUS_COLORS } from '../utils/frontmatter'
@@ -99,6 +99,25 @@ function FileRow({ node, onOpenFile, onOpenFilePinned, searchQuery, depth, proje
   }
   const { favorites, addFavorite, removeFavorite, tabs, activeTabId, closeTab, setLastOpenedDir, markTabSaved } = useAppStore()
   const [contextMenu, setContextMenu] = useState<{ x: number; y: number } | null>(null)
+  const contextMenuRef = useRef<HTMLDivElement>(null)
+  useLayoutEffect(() => {
+    if (!contextMenu || !contextMenuRef.current) return
+    const el = contextMenuRef.current
+    const rect = el.getBoundingClientRect()
+    const margin = 4
+    let nextLeft = contextMenu.x
+    let nextTop = contextMenu.y
+    if (nextLeft + rect.width + margin > window.innerWidth) {
+      nextLeft = Math.max(margin, window.innerWidth - rect.width - margin)
+    }
+    if (nextTop + rect.height + margin > window.innerHeight) {
+      nextTop = Math.max(margin, window.innerHeight - rect.height - margin)
+    }
+    if (nextLeft !== contextMenu.x || nextTop !== contextMenu.y) {
+      el.style.left = `${nextLeft}px`
+      el.style.top = `${nextTop}px`
+    }
+  }, [contextMenu])
   const [showHistory, setShowHistory] = useState(false)
   const [isDragOver, setIsDragOver] = useState(false)
   const [isRenaming, setIsRenaming] = useState(false)
@@ -352,6 +371,7 @@ function FileRow({ node, onOpenFile, onOpenFilePinned, searchQuery, depth, proje
           <>
             <div className="fixed inset-0 z-40" onClick={() => setContextMenu(null)} />
             <div
+              ref={contextMenuRef}
               className="fixed z-50 bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-600 rounded-lg shadow-xl py-1 min-w-44"
               style={{ left: contextMenu.x, top: contextMenu.y }}
             >
@@ -473,6 +493,7 @@ function FileRow({ node, onOpenFile, onOpenFilePinned, searchQuery, depth, proje
         <>
           <div className="fixed inset-0 z-40" onClick={() => setContextMenu(null)} />
           <div
+            ref={contextMenuRef}
             className="fixed z-50 bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-600 rounded-lg shadow-xl py-1 min-w-44"
             style={{ left: contextMenu.x, top: contextMenu.y }}
           >
