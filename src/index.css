@@ -161,13 +161,13 @@ html, body, #root {
   margin: 1em 0;
 }
 
-/* Cursor position highlight in preview */
+/* Cursor position highlight in preview — uses inset box-shadow instead of
+   border/margin so list item markers (•, numbers) are not pushed out of view. */
 .markdown-body .cursor-highlight {
   background: rgba(59, 130, 246, 0.08);
-  border-left: 2px solid #3b82f6;
-  padding-left: 6px;
-  margin-left: -8px;
-  transition: background 0.15s, border-color 0.15s;
+  box-shadow: inset 2px 0 0 #3b82f6;
+  border-radius: 2px;
+  transition: background 0.15s, box-shadow 0.15s;
 }
 
 .dark .markdown-body .cursor-highlight {

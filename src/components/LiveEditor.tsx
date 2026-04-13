@@ -83,6 +83,7 @@ const darkTheme = EditorView.theme({
     padding: '1.5rem 2rem',
     maxWidth: '800px',
     margin: '0 auto',
+    caretColor: '#60a5fa',
     lineHeight: '1.8',
   },
   '.cm-gutters': {
@@ -90,6 +91,16 @@ const darkTheme = EditorView.theme({
   },
   '.cm-activeLine': {
     backgroundColor: 'rgba(59, 130, 246, 0.08)',
+  },
+  '.cm-selectionBackground, ::selection': {
+    backgroundColor: 'rgba(96, 165, 250, 0.25) !important',
+  },
+  '.cm-cursor, .cm-dropCursor': {
+    borderLeftColor: '#60a5fa',
+    borderLeftWidth: '2px',
+  },
+  '&.cm-focused .cm-cursor': {
+    borderLeftColor: '#60a5fa',
   },
 }, { dark: true })
 
@@ -101,6 +112,31 @@ export default function LiveEditor({ tab, onSave, onChange, editorViewRef, onScr
   const containerRef = useRef<HTMLDivElement>(null)
   const mdFilesRef = useRef(mdFiles)
   mdFilesRef.current = mdFiles
+
+  // CodeMirror's cursor layer uses a CSS animation that can get stuck in
+  // the "off" frame after the window loses and regains focus (alt-tab,
+  // workspace switch, devtools open). Restart the animation and force a
+  // re-measure so the caret reappears.
+  useEffect(() => {
+    const restoreCursor = () => {
+      const view = cmRef.current?.view
+      if (!view || !view.hasFocus) return
+      const layer = view.dom.querySelector('.cm-cursorLayer') as HTMLElement | null
+      if (layer) {
+        const prev = layer.style.animationName
+        layer.style.animationName = 'none'
+        void layer.offsetWidth
+        layer.style.animationName = prev || ''
+      }
+      view.requestMeasure()
+    }
+    window.addEventListener('focus', restoreCursor)
+    document.addEventListener('visibilitychange', restoreCursor)
+    return () => {
+      window.removeEventListener('focus', restoreCursor)
+      document.removeEventListener('visibilitychange', restoreCursor)
+    }
+  }, [])
 
   // ── Helper: wrap selection with inline markers ─────────────────────────
   const wrapSelection = useCallback((view: EditorView, before: string, after: string) => {

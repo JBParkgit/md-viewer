@@ -137,6 +137,9 @@ export default function GitPanel() {
 
   useEffect(() => { refresh() }, [refresh])
 
+  // Reset commit message when switching projects to avoid cross-project bleed
+  useEffect(() => { setCommitMsg('') }, [selectedProjectPath])
+
   // Auto-refresh when directory changes
   useEffect(() => {
     if (!selectedProjectPath) return

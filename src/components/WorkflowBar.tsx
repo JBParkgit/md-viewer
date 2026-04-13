@@ -36,9 +36,20 @@ export default function WorkflowBar({ tab, projectPath }: Props) {
     setDueDraft(meta?.dueDate || '')
   }, [meta?.author, meta?.dueDate, tab.filePath])
 
+  // Reset per-tab transient inputs when switching files
+  useEffect(() => {
+    setNewApprover('')
+    setAddApproverError('')
+    setCommentDraft('')
+    setShowCommentFor(null)
+    setRequestNoteDraft('')
+    setShowRequestComposer(false)
+  }, [tab.filePath])
+
   const [commentDraft, setCommentDraft] = useState('')
   const [showCommentFor, setShowCommentFor] = useState<null | 'approved' | 'rejected'>(null)
   const [newApprover, setNewApprover] = useState('')
+  const [addApproverError, setAddApproverError] = useState('')
   const [requestNoteDraft, setRequestNoteDraft] = useState('')
   const [showRequestComposer, setShowRequestComposer] = useState(false)
   const [authorDraft, setAuthorDraft] = useState('')
@@ -105,8 +116,15 @@ export default function WorkflowBar({ tab, projectPath }: Props) {
   }
 
   const handleAddApprover = async () => {
-    await actions.addPerson(meta, newApprover)
-    setNewApprover('')
+    const res = await actions.addPerson(meta, newApprover)
+    if (res.ok) {
+      setNewApprover('')
+      setAddApproverError('')
+    } else if (res.reason === 'duplicate') {
+      setAddApproverError('이미 추가된 승인자입니다')
+    } else if (res.reason === 'empty') {
+      setAddApproverError('이름을 입력하세요')
+    }
   }
 
   const commitAuthor = async () => {
@@ -381,9 +399,13 @@ export default function WorkflowBar({ tab, projectPath }: Props) {
             canEdit={true}
             onRemove={(name) => actions.removePerson(meta, name)}
             addInput={newApprover}
-            setAddInput={setNewApprover}
+            setAddInput={(v) => { setNewApprover(v); if (addApproverError) setAddApproverError('') }}
             onAdd={handleAddApprover}
           />
+
+          {addApproverError && (
+            <div className="mt-1 text-[10px] text-red-500">{addApproverError}</div>
+          )}
 
           <div className="mt-1 text-[10px] text-gray-400">
             💡 칩의 × 로 제거, 점선 입력란에 이름 입력 후 Enter로 추가. 검토 중이어도 변경 가능합니다.

@@ -16,7 +16,7 @@ export interface UseWorkflowActions {
   writeBack: (next: WorkflowMeta) => Promise<void>
   initWorkflow: () => Promise<void>
   clearWorkflow: () => Promise<void>
-  addPerson: (meta: WorkflowMeta, name: string) => Promise<void>
+  addPerson: (meta: WorkflowMeta, name: string) => Promise<{ ok: boolean; reason?: string }>
   removePerson: (meta: WorkflowMeta, name: string) => Promise<void>
   updateFields: (meta: WorkflowMeta, patch: Partial<Pick<WorkflowMeta, 'author' | 'dueDate' | 'created'>>) => Promise<void>
   setStatus: (meta: WorkflowMeta, status: WorkflowMeta['status']) => Promise<void>
@@ -84,15 +84,16 @@ export function useWorkflowActions(filePath: string, projectPath: string): UseWo
     }
   }, [filePath, tabs, markTabSaved])
 
-  const addPerson = useCallback(async (meta: WorkflowMeta, name: string) => {
+  const addPerson = useCallback(async (meta: WorkflowMeta, name: string): Promise<{ ok: boolean; reason?: string }> => {
     const trimmed = name.trim()
-    if (!trimmed) return
-    if (meta.approvers.some(r => r.name === trimmed)) return
+    if (!trimmed) return { ok: false, reason: 'empty' }
+    if (meta.approvers.some(r => r.name === trimmed)) return { ok: false, reason: 'duplicate' }
     const next: WorkflowMeta = {
       ...meta,
       approvers: [...meta.approvers, { name: trimmed, status: 'pending' as const }],
     }
     await writeBack(next)
+    return { ok: true }
   }, [writeBack])
 
   const removePerson = useCallback(async (meta: WorkflowMeta, name: string) => {

@@ -1,8 +1,9 @@
 import { useState, useEffect, useCallback } from 'react'
 import { useAppStore } from '../stores/useAppStore'
+import HelpModal from './HelpModal'
 
 interface MenuItem {
-  label: string
+  label?: string
   shortcut?: string
   action?: () => void
   separator?: boolean
@@ -21,6 +22,7 @@ export default function Toolbar() {
     spellcheckEnabled, setSpellcheckEnabled,
   } = useAppStore()
   const [openIdx, setOpenIdx] = useState<number | null>(null)
+  const [helpOpen, setHelpOpen] = useState(false)
 
   const handleAddProject = useCallback(async () => {
     const folder = await window.electronAPI.openFolder()
@@ -78,7 +80,9 @@ export default function Toolbar() {
     {
       label: '도움말',
       items: [
-        { label: 'Docuflow v2.0', action: () => {} },
+        { label: '도움말 보기', shortcut: 'F1', action: () => setHelpOpen(true) },
+        { separator: true },
+        { label: 'Docuflow v2.1', action: () => setHelpOpen(true) },
       ],
     },
   ]
@@ -94,6 +98,7 @@ export default function Toolbar() {
   // Global shortcuts
   useEffect(() => {
     const handler = (e: KeyboardEvent) => {
+      if (e.key === 'F1') { e.preventDefault(); setHelpOpen(true); return }
       const ctrl = e.ctrlKey || e.metaKey
       if (!ctrl) return
       if (e.shiftKey && e.key === 'O') { e.preventDefault(); handleAddProject() }
@@ -109,6 +114,8 @@ export default function Toolbar() {
   const close = () => setOpenIdx(null)
 
   return (
+    <>
+    <HelpModal open={helpOpen} onClose={() => setHelpOpen(false)} />
     <div
       className="flex items-center gap-0.5 px-2 h-9 bg-gray-50 dark:bg-gray-800 border-b border-gray-200 dark:border-gray-700 flex-shrink-0 select-none"
       style={{ WebkitAppRegion: 'drag', paddingRight: '150px' } as React.CSSProperties}
@@ -118,7 +125,7 @@ export default function Toolbar() {
         className="text-sm font-semibold text-blue-600 dark:text-blue-400 mr-1.5 px-1 flex-shrink-0"
         style={{ WebkitAppRegion: 'no-drag' } as React.CSSProperties}
       >
-        Docuflow
+        Docuflow <span className="text-[10px] font-normal text-gray-400 dark:text-gray-500 align-middle">v2.1</span>
       </span>
 
       {/* Menu buttons — z-50 so they stay above the backdrop */}
@@ -262,5 +269,6 @@ export default function Toolbar() {
         )}
       </button>
     </div>
+    </>
   )
 }

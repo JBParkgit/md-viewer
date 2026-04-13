@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { useAppStore } from '../stores/useAppStore'
 import { useWorkflowStore } from '../stores/useWorkflowStore'
 import {
@@ -29,7 +29,14 @@ export default function WorkflowDocPanel({ content, filePath, projectPath }: Pro
   const activeTab = tabs.find(t => t.filePath === filePath)
   const [savingState, setSavingState] = useState<string | null>(null)
   const [newApprover, setNewApprover] = useState('')
+  const [addApproverError, setAddApproverError] = useState('')
   const [commentDraft, setCommentDraft] = useState('')
+
+  useEffect(() => {
+    setNewApprover('')
+    setAddApproverError('')
+    setCommentDraft('')
+  }, [filePath])
 
   const meta = useMemo<WorkflowMeta | null>(() => parseWorkflow(content), [content])
 
@@ -73,7 +80,7 @@ export default function WorkflowDocPanel({ content, filePath, projectPath }: Pro
     )
   }
 
-  const isAuthor = currentUser && meta.author === currentUser
+  const isAuthor = !meta.author || (currentUser && meta.author === currentUser)
   const isDraft = meta.status === 'draft'
   const isReview = meta.status === 'review'
   const isApproved = meta.status === 'approved'
@@ -81,13 +88,20 @@ export default function WorkflowDocPanel({ content, filePath, projectPath }: Pro
 
   const addApprover = async () => {
     const name = newApprover.trim()
-    if (!name) return
-    if (meta.approvers.some(a => a.name === name)) return
+    if (!name) {
+      setAddApproverError('이름을 입력하세요')
+      return
+    }
+    if (meta.approvers.some(a => a.name === name)) {
+      setAddApproverError('이미 추가된 승인자입니다')
+      return
+    }
     const next: WorkflowMeta = {
       ...meta,
       approvers: [...meta.approvers, { name, status: 'pending' as const } as Reviewer],
     }
     setNewApprover('')
+    setAddApproverError('')
     await writeBack(next)
   }
 
@@ -192,21 +206,26 @@ export default function WorkflowDocPanel({ content, filePath, projectPath }: Pro
             <PersonRow key={a.name} person={a} removable={!!isAuthor && isDraft} onRemove={() => removeApprover(a.name)} />
           ))}
           {isAuthor && isDraft && (
-            <div className="flex gap-1">
-              <input
-                value={newApprover}
-                onChange={e => setNewApprover(e.target.value)}
-                onKeyDown={e => { if (e.key === 'Enter') addApprover() }}
-                placeholder="승인자 이름"
-                className="flex-1 px-1.5 py-0.5 rounded border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 text-[11px] focus:outline-none focus:ring-1 focus:ring-blue-400 min-w-0"
-              />
-              <button
-                onClick={addApprover}
-                className="px-1.5 py-0.5 rounded bg-green-500 hover:bg-green-600 text-white text-[11px]"
-              >
-                추가
-              </button>
-            </div>
+            <>
+              <div className="flex gap-1">
+                <input
+                  value={newApprover}
+                  onChange={e => { setNewApprover(e.target.value); if (addApproverError) setAddApproverError('') }}
+                  onKeyDown={e => { if (e.key === 'Enter') addApprover() }}
+                  placeholder="승인자 이름"
+                  className="flex-1 px-1.5 py-0.5 rounded border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 text-[11px] focus:outline-none focus:ring-1 focus:ring-blue-400 min-w-0"
+                />
+                <button
+                  onClick={addApprover}
+                  className="px-1.5 py-0.5 rounded bg-green-500 hover:bg-green-600 text-white text-[11px]"
+                >
+                  추가
+                </button>
+              </div>
+              {addApproverError && (
+                <div className="text-[10px] text-red-500">{addApproverError}</div>
+              )}
+            </>
           )}
         </div>
       </div>
