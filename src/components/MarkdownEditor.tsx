@@ -10,6 +10,7 @@ import TableEditor from './TableEditor'
 import FloatingToolbar from './FloatingToolbar'
 import EditorContextMenu from './EditorContextMenu'
 import WorkflowBar from './WorkflowBar'
+import FindWidget from './FindWidget'
 
 interface Props {
   tab: Tab
@@ -131,7 +132,9 @@ export default function MarkdownEditor({ tab }: Props) {
     return { chars, charsNoSpace, words }
   }, [tab.content])
   const [showTableEditor, setShowTableEditor] = useState(false)
+  const [findOpen, setFindOpen] = useState(false)
   const editorViewRef = useRef<EditorView | null>(null)
+  const previewScrollRef = useRef<HTMLDivElement | null>(null)
 
   // isEditMode reused as: false=preview, true=split or editor
   // We store layout in local state (persists per component mount)
@@ -207,7 +210,7 @@ export default function MarkdownEditor({ tab }: Props) {
     view.focus()
   }, [])
 
-  // ── Ctrl+S / Ctrl+1,2,3 ──────────────────────────────────────────────────
+  // ── Ctrl+S / Ctrl+1,2,3 / Ctrl+F ─────────────────────────────────────────
   useEffect(() => {
     const handler = (e: KeyboardEvent) => {
       if ((e.ctrlKey || e.metaKey) && e.key === 's') {
@@ -230,6 +233,23 @@ export default function MarkdownEditor({ tab }: Props) {
     window.addEventListener('keydown', handler)
     return () => window.removeEventListener('keydown', handler)
   }, [handleSave, insertHeading])
+
+  // ── Ctrl+F: open find widget (capture phase to preempt CodeMirror) ──────
+  useEffect(() => {
+    const handler = (e: KeyboardEvent) => {
+      if ((e.ctrlKey || e.metaKey) && !e.shiftKey && !e.altKey && (e.key === 'f' || e.key === 'F')) {
+        e.preventDefault()
+        e.stopPropagation()
+        setFindOpen(true)
+      }
+    }
+    window.addEventListener('keydown', handler, true)
+    return () => window.removeEventListener('keydown', handler, true)
+  }, [])
+
+  // Determine which target to search based on current layout
+  // (split mode defaults to editor; user can switch to preview-only for preview find)
+  const findPrefer: 'editor' | 'preview' = layout === 'preview' ? 'preview' : 'editor'
 
   // ── Reload from disk ──────────────────────────────────────────────────────
   const handleReload = async () => {
@@ -334,11 +354,11 @@ export default function MarkdownEditor({ tab }: Props) {
       )}
 
       {/* Main content */}
-      <div className="flex flex-1 overflow-hidden">
+      <div className="flex flex-1 overflow-hidden relative">
         {layout === 'preview' && (
           <>
             <div className="flex-1 overflow-hidden">
-              <MarkdownView tab={tab} />
+              <MarkdownView tab={tab} scrollRef={previewScrollRef} />
             </div>
             {showTOC && (
               <RightPanel
@@ -369,8 +389,17 @@ export default function MarkdownEditor({ tab }: Props) {
             editorViewRef={editorViewRef}
             projectPath={projectPath}
             mdFiles={mdFiles}
+            previewScrollRef={previewScrollRef}
           />
         )}
+
+        <FindWidget
+          open={findOpen}
+          onClose={() => setFindOpen(false)}
+          editorView={editorViewRef.current}
+          previewContainer={previewScrollRef.current}
+          prefer={findPrefer}
+        />
       </div>
 
       {/* Status bar — word / character stats + git info */}
@@ -652,6 +681,7 @@ interface SplitViewProps {
   editorViewRef?: React.MutableRefObject<EditorView | null>
   projectPath: string
   mdFiles: { name: string; path: string }[]
+  previewScrollRef?: React.MutableRefObject<HTMLDivElement | null>
 }
 
 // ── Sync scroll: editor <-> preview ────────────────────────────────────────────
@@ -1140,11 +1170,12 @@ function MdToolbar({ editorViewRef, onTableClick }: MdToolbarProps) {
   )
 }
 
-function SplitView({ tab, onSave, onChange, showTOC, editorViewRef, projectPath, mdFiles }: SplitViewProps) {
+function SplitView({ tab, onSave, onChange, showTOC, editorViewRef, projectPath, mdFiles, previewScrollRef: externalPreviewRef }: SplitViewProps) {
   const [splitRatio, setSplitRatio] = useState(50)
   const [isDragging, setIsDragging] = useState(false)
   const [cursorLine, setCursorLine] = useState(0)
-  const previewScrollRef = useRef<HTMLDivElement | null>(null)
+  const localPreviewRef = useRef<HTMLDivElement | null>(null)
+  const previewScrollRef = externalPreviewRef ?? localPreviewRef
   const { onEditorScroll, onPreviewScroll } = useSyncScroll(editorViewRef, previewScrollRef)
 
   const handleDividerMouseDown = (e: React.MouseEvent) => {

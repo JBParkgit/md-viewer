@@ -82,7 +82,7 @@ export default function Toolbar() {
       items: [
         { label: '도움말 보기', shortcut: 'F1', action: () => setHelpOpen(true) },
         { separator: true },
-        { label: 'Docuflow v2.1', action: () => setHelpOpen(true) },
+        { label: 'Docuflow v2.2', action: () => setHelpOpen(true) },
       ],
     },
   ]
@@ -125,7 +125,7 @@ export default function Toolbar() {
         className="text-sm font-semibold text-blue-600 dark:text-blue-400 mr-1.5 px-1 flex-shrink-0"
         style={{ WebkitAppRegion: 'no-drag' } as React.CSSProperties}
       >
-        Docuflow <span className="text-[10px] font-normal text-gray-400 dark:text-gray-500 align-middle">v2.1</span>
+        Docuflow <span className="text-[10px] font-normal text-gray-400 dark:text-gray-500 align-middle">v2.2</span>
       </span>
 
       {/* Menu buttons — z-50 so they stay above the backdrop */}

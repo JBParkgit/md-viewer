@@ -39,6 +39,16 @@ html, body, #root {
   contain: layout paint;
 }
 
+/* ── Find widget highlights (CSS Custom Highlight API) ──────────────────── */
+::highlight(find-match) {
+  background-color: rgba(234, 179, 8, 0.45);
+  color: inherit;
+}
+::highlight(find-match-current) {
+  background-color: rgba(249, 115, 22, 0.75);
+  color: white;
+}
+
 /* ── Markdown View Styles ─────────────────────────────────────────────────── */
 .markdown-body {
   font-size: var(--md-font-size);
