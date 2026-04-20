@@ -47,6 +47,7 @@ export default function WorkflowDocPanel({ content, filePath, projectPath }: Pro
     const res = await window.electronAPI.writeFile(filePath, updated)
     if (res.success) {
       if (activeTab) markTabSaved(activeTab.id, updated)
+      window.dispatchEvent(new CustomEvent('file-saved', { detail: filePath }))
       await refreshFile(filePath, projectPath)
       setSavingState('저장됨')
       setTimeout(() => setSavingState(null), 1500)
