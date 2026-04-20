@@ -178,27 +178,45 @@ export default function MarkdownView({ tab, scrollRef, lineNumbers, cursorLine, 
     if (scrollRef) scrollRef.current = containerRef.current
   }, [scrollRef])
 
-  // Restore scroll position (include filePath so preview tab reuse resets to top)
+  // Debounced save — declared before the restore effect so that the restore
+  // effect can cancel any pending save.
+  const scrollSaveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+
+  // Restore scroll position. Preview-tab reuse keeps the same tab.id but
+  // swaps filePath, so we explicitly detect that case and force top.
+  const prevTabIdRef = useRef(tab.id)
+  const prevFilePathRef = useRef(tab.filePath)
   useEffect(() => {
-    if (containerRef.current) {
-      containerRef.current.scrollTop = tab.scrollPos
+    if (!containerRef.current) return
+    // A pending save from the previous file would otherwise land on the
+    // new file (same preview tab.id) and pollute its saved scroll position.
+    if (scrollSaveTimerRef.current) {
+      clearTimeout(scrollSaveTimerRef.current)
+      scrollSaveTimerRef.current = null
     }
+    const isPreviewReuse =
+      prevTabIdRef.current === tab.id && prevFilePathRef.current !== tab.filePath
+    containerRef.current.scrollTop = isPreviewReuse ? 0 : tab.scrollPos
+    prevTabIdRef.current = tab.id
+    prevFilePathRef.current = tab.filePath
   }, [tab.id, tab.filePath])
 
   // Save scroll position — debounced so a fast scroll doesn't trigger
   // a store update (and thus a MarkdownView re-render) on every frame.
   // Scroll position only matters for restoration on tab switch, so
-  // persisting it 200ms after scroll stops is fine.
-  const scrollSaveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+  // persisting it 200ms after scroll stops is fine. The callback verifies
+  // the file is still the one that was scrolled, so a timer scheduled
+  // before a preview-tab reuse can't corrupt the new file's scrollPos.
   const handleScroll = useCallback(() => {
     if (onScroll) onScroll()
     if (scrollSaveTimerRef.current) clearTimeout(scrollSaveTimerRef.current)
+    const scrolledPath = tab.filePath
     scrollSaveTimerRef.current = setTimeout(() => {
-      if (containerRef.current) {
-        setTabScrollPos(tab.id, containerRef.current.scrollTop)
-      }
+      if (!containerRef.current) return
+      if (scrolledPath !== prevFilePathRef.current) return
+      setTabScrollPos(tab.id, containerRef.current.scrollTop)
     }, 200)
-  }, [tab.id, setTabScrollPos, onScroll])
+  }, [tab.id, tab.filePath, setTabScrollPos, onScroll])
   useEffect(() => () => {
     if (scrollSaveTimerRef.current) clearTimeout(scrollSaveTimerRef.current)
   }, [])

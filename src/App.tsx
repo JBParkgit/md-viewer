@@ -196,7 +196,15 @@ export default function App() {
   const VIDEO_EXTS = ['mp4', 'webm', 'ogg', 'mov', 'avi', 'mkv']
   const PDF_EXTS = ['pdf']
   const DOCX_EXTS = ['doc', 'docx']
-  const TEXT_EXTS = ['txt', 'log', 'ini', 'env', 'toml']
+  const TEXT_EXTS = [
+    'txt', 'log', 'ini', 'env', 'toml',
+    'json', 'yml', 'yaml', 'xml', 'csv',
+    'js', 'ts', 'jsx', 'tsx', 'mjs', 'cjs',
+    'py', 'java', 'c', 'h', 'cpp', 'hpp', 'cs', 'go', 'rs', 'rb', 'php', 'swift', 'kt',
+    'html', 'htm', 'css', 'scss', 'sass', 'less',
+    'sh', 'bash', 'zsh', 'bat', 'cmd', 'ps1',
+    'sql', 'graphql', 'dockerfile', 'gitignore', 'editorconfig', 'conf', 'cfg', 'properties',
+  ]
 
   const openFile = useCallback(async (filePath: string, fileName: string, preview = true) => {
     const ext = fileName.split('.').pop()?.toLowerCase() ?? ''
