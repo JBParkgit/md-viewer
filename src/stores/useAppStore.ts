@@ -411,11 +411,14 @@ export const useAppStore = create<AppStore>((set, get) => ({
 
   addProject: (folderPath) => {
     const { projects } = get()
-    if (projects.some(p => p.path === folderPath)) return
-    const name = folderPath.replace(/\\/g, '/').split('/').filter(Boolean).pop() || folderPath
+    // Normalize: convert forward slashes, collapse duplicate slashes
+    const normalizedPath = folderPath.replace(/\\/g, '/').replace(/\/+/g, '/').replace(/\/$/, '')
+      .replace(/^([a-zA-Z]):\//, (_, d) => d.toUpperCase() + ':/')
+    if (projects.some(p => p.path === normalizedPath)) return
+    const name = normalizedPath.split('/').filter(Boolean).pop() || normalizedPath
     const project: Project = {
       id: `proj-${++projectCounter}`,
-      path: folderPath,
+      path: normalizedPath,
       name,
       collapsed: true,
     }

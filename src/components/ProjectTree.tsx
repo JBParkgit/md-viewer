@@ -186,21 +186,31 @@ export default function ProjectTree({ project, projectIndex, searchQuery, onOpen
           if (!line) continue
           const index = line[0]
           const worktree = line[1]
-          let file = line.slice(3).replace(/\\/g, '/')
+          let file = line.slice(3)
           // Remove surrounding quotes (git quotes paths with special chars)
           if (file.startsWith('"') && file.endsWith('"')) {
             file = file.slice(1, -1)
+            // Decode git's octal-escaped UTF-8 bytes (e.g. \355\224\204 → 프)
+            file = file.replace(/((?:\\[0-7]{3})+)/g, (match) => {
+              const bytes = new Uint8Array(match.split('\\').filter(Boolean).map(o => parseInt(o, 8)))
+              return new TextDecoder('utf-8').decode(bytes)
+            })
           }
+          file = file.replace(/\\/g, '/')
           map[file] = { index, worktree }
           count++
         }
         setGitStatusMap(map)
         setGitChangedCount(count)
       } else {
+        if (!statusRes.success && statusRes.error) {
+          console.warn('[git:status] error:', statusRes.error)
+        }
         setGitStatusMap({})
         setGitChangedCount(0)
       }
-    } catch {
+    } catch (e) {
+      console.warn('[loadGitStatus] exception:', e)
       setGitBranch(null)
       setGitStatusMap({})
       setGitChangedCount(0)

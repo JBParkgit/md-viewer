@@ -12,12 +12,23 @@ interface GitLogEntry {
   message: string
 }
 
+function decodeGitPath(raw: string): string {
+  if (raw.startsWith('"') && raw.endsWith('"')) {
+    const inner = raw.slice(1, -1)
+    return inner.replace(/((?:\\[0-7]{3})+)/g, (match) => {
+      const bytes = new Uint8Array(match.split('\\').filter(Boolean).map(o => parseInt(o, 8)))
+      return new TextDecoder('utf-8').decode(bytes)
+    }).replace(/\\/g, '/')
+  }
+  return raw.replace(/\\/g, '/')
+}
+
 function parseStatus(output: string): GitFileEntry[] {
   if (!output.trim()) return []
   return output.split('\n').filter(Boolean).map(line => {
     const index = line[0]    // staged status
     const worktree = line[1] // unstaged status
-    const file = line.slice(3)
+    const file = decodeGitPath(line.slice(3))
     if (index === '?' && worktree === '?') {
       return { status: '?', staged: false, file }
     }
@@ -151,7 +162,7 @@ export default function GitPanel() {
 
   const showAction = (text: string, type: 'success' | 'error') => {
     setActionMsg({ text, type })
-    setTimeout(() => setActionMsg(null), 3000)
+    setTimeout(() => setActionMsg(null), type === 'error' ? 10000 : 3000)
   }
 
   const notifyGitChanged = () => {
@@ -259,7 +270,9 @@ export default function GitPanel() {
       refresh()
       notifyGitChanged()
     } else {
-      showAction(res.error || 'Push 실패', 'error')
+      const err = res.error || ''
+      const needsPull = err.includes('fetch first') || err.includes('non-fast-forward') || err.includes('rejected')
+      showAction(needsPull ? 'Push 실패: 원격에 새 커밋이 있습니다. Pull 먼저 하세요.' : (err || 'Push 실패'), 'error')
       setLoading(false)
     }
   }

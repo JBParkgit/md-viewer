@@ -69,8 +69,8 @@ function getDirGitStatus(dirPath: string, gitStatusMap?: GitStatusMap, projectPa
 function getGitDot(node: FileNode, gitStatusMap?: GitStatusMap, projectPath?: string): { color: string; letter: string; title: string } | null {
   if (!gitStatusMap || !projectPath || Object.keys(gitStatusMap).length === 0) return null
   // Normalize both paths to forward slashes for comparison
-  const normProject = projectPath.replace(/\\/g, '/')
-  const normNode = node.path.replace(/\\/g, '/')
+  const normProject = projectPath.replace(/\\/g, '/').replace(/\/+/g, '/')
+  const normNode = node.path.replace(/\\/g, '/').replace(/\/+/g, '/')
   const prefix = normProject.endsWith('/') ? normProject : normProject + '/'
   if (!normNode.startsWith(prefix)) return null
   const rel = normNode.slice(prefix.length)

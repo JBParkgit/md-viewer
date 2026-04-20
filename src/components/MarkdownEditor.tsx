@@ -475,9 +475,9 @@ export default function MarkdownEditor({ tab }: Props) {
 
 // ── Tag Bar ───────────────────────────────────────────────────────────────
 function TagBar({ tab, onSave }: { tab: Tab; onSave: (content: string) => void }) {
-  const tags = parseFrontmatterTags(tab.content)
+  const tags = useMemo(() => parseFrontmatterTags(tab.content), [tab.content])
   // Body `#tag` mentions — read-only (user edits them in the document body itself)
-  const inlineTags = parseInlineTags(tab.content).filter(t => !tags.includes(t))
+  const inlineTags = useMemo(() => parseInlineTags(tab.content).filter(t => !tags.includes(t)), [tab.content, tags])
   const tagColors = useAppStore(s => s.tagColors)
   const projects = useAppStore(s => s.projects)
   const [inputVisible, setInputVisible] = useState(false)

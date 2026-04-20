@@ -992,7 +992,14 @@ function gitExec(args: string[], cwd: string): Promise<{ success: boolean; outpu
 }
 
 ipcMain.handle('git:isRepo', async (_e, cwd: string) => {
-  return existsSync(join(cwd, '.git'))
+  // Walk up directory tree like git itself does
+  let dir = cwd.replace(/\\/g, '/')
+  while (true) {
+    if (existsSync(join(dir, '.git'))) return true
+    const parent = dir.replace(/\/[^/]+$/, '')
+    if (parent === dir) return false
+    dir = parent
+  }
 })
 
 ipcMain.handle('git:clone', async (_e, url: string, destDir: string) => {

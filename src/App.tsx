@@ -89,7 +89,11 @@ export default function App() {
       const font = (savedFont as string) || 'default'
       const favs = (savedFavs as string[]) || []
       const recent = (savedRecent as { path: string; name: string }[]) || []
-      const projs = (savedProjects as { path: string; name: string }[]) || []
+      const projs = ((savedProjects as { path: string; name: string }[]) || []).map(p => ({
+        ...p,
+        path: p.path.replace(/\\/g, '/').replace(/\/+/g, '/').replace(/\/$/, '')
+          .replace(/^([a-zA-Z]):\//, (_, d: string) => d.toUpperCase() + ':/')
+      }))
       const tags = (savedTags as Record<string, string[]>) || {}
       const tagColors = (savedTagColors as Record<string, string>) || {}
       const projectColors = (savedProjectColors as Record<string, number>) || {}
