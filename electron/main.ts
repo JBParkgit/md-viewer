@@ -1434,8 +1434,15 @@ ipcMain.handle('export:docx', async (_e, srcMdPath: string, destPath: string) =>
     const htmlToDocxMod = require('html-to-docx')
     const htmlToDocx: (html: string, header?: string | null, opts?: Record<string, unknown>) => Promise<Buffer | ArrayBuffer> =
       htmlToDocxMod.default || htmlToDocxMod
+    // html-to-docx@1.8.0 reads each `margins` field directly and serializes
+    // missing ones as the literal string "undefined", which violates the
+    // pgMar schema and makes Word refuse to open the file. All six fields
+    // (top/bottom/left/right/header/footer/gutter) must be supplied.
     const result = await htmlToDocx(fullHtml, null, {
-      margins: { top: 1440, bottom: 1440, left: 1440, right: 1440 }, // 1 inch (twips)
+      margins: {
+        top: 1440, bottom: 1440, left: 1440, right: 1440, // 1 inch (twips)
+        header: 720, footer: 720, gutter: 0,
+      },
       table: { row: { cantSplit: true } },
       font: 'Malgun Gothic',
       fontSize: 22, // half-points → 11pt

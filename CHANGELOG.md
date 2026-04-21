@@ -1,5 +1,13 @@
 # Changelog
 
+## 2.6.3 — 2026-04-22
+
+### 수정 — DOCX가 Word에서 열리지 않던 문제
+
+- **생성된 `.docx`를 Word가 거부** — `html-to-docx@1.8.0`은 `margins` 옵션에 빠진 필드를 그대로 문자열 `"undefined"`로 직렬화해, `<w:pgMar w:header="undefined" w:footer="undefined" w:gutter="undefined"/>`가 출력됨. OOXML 스키마 위반으로 Word가 "파일을 열 때 오류가 발생했습니다" 대화상자를 띄우며 열기를 거부. `header`/`footer`/`gutter` 값을 명시적으로 지정해 해결.
+
+---
+
 ## 2.6.2 — 2026-04-22
 
 ### 수정 — MD → DOCX 품질
