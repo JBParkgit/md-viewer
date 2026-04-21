@@ -6,7 +6,21 @@ import { execFile } from 'child_process'
 import mammoth from 'mammoth'
 import Store from 'electron-store'
 import chokidar from 'chokidar'
-import { marked } from 'marked'
+// marked v18 is ESM-only (package.json "type": "module"). electron-vite
+// bundles main as CommonJS, so a static `import { marked } from 'marked'`
+// becomes a require() and fails with ERR_REQUIRE_ESM at runtime. Use
+// dynamic import inside handlers — the first call loads it once and caches.
+type MarkedModule = typeof import('marked')
+let markedModulePromise: Promise<MarkedModule> | null = null
+function loadMarked(): Promise<MarkedModule> {
+  if (!markedModulePromise) {
+    markedModulePromise = import('marked').then((m) => {
+      m.marked.setOptions({ gfm: true, breaks: false })
+      return m
+    })
+  }
+  return markedModulePromise
+}
 import {
   Document as DocxDocument,
   Packer,
@@ -1307,11 +1321,11 @@ ipcMain.handle('dialog:saveAs', async (_e, defaultPath: string, filters: Electro
 })
 
 // ── Markdown → HTML (shared) ───────────────────────────────────────────────
-// We feed marked with GFM so tables/task-lists render. The breaks option is
-// off so normal markdown line-break behavior (blank line = paragraph) holds.
-marked.setOptions({ gfm: true, breaks: false })
+// GFM options (tables/task-lists) are set once in loadMarked() when the
+// module first loads.
 
-function buildPrintableHtml(md: string, baseDir: string, title: string): string {
+async function buildPrintableHtml(md: string, baseDir: string, title: string): Promise<string> {
+  const { marked } = await loadMarked()
   const bodyHtml = marked.parse(md, { async: false }) as string
   // Minimal but readable print style. No reliance on app CSS so the output
   // is self-contained and doesn't drag in Docuflow's sidebar/toolbar styles.
@@ -1354,7 +1368,7 @@ ipcMain.handle('export:pdf', async (_e, srcMdPath: string, destPath: string) => 
   try {
     const md = await readFile(srcMdPath, 'utf-8')
     const baseDir = dirname(srcMdPath)
-    const html = buildPrintableHtml(md, baseDir, basename(srcMdPath))
+    const html = await buildPrintableHtml(md, baseDir, basename(srcMdPath))
     const tmpHtml = join(app.getPath('temp'), `docuflow-pdf-${Date.now()}.html`)
     await writeFile(tmpHtml, html, 'utf-8')
 
@@ -1475,6 +1489,7 @@ ipcMain.handle('export:docx', async (_e, srcMdPath: string, destPath: string) =>
     const md = await readFile(srcMdPath, 'utf-8')
     // Strip YAML frontmatter — it's metadata, not document body content.
     const body = md.replace(/^---\r?\n[\s\S]*?\r?\n---\r?\n?/, '')
+    const { marked } = await loadMarked()
     const tokens = marked.lexer(body)
     const children = tokensToDocxChildren(tokens as any[])
     const doc = new DocxDocument({

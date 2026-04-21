@@ -1,5 +1,13 @@
 # Changelog
 
+## 2.6.1 — 2026-04-22
+
+### 수정
+
+- **`ERR_REQUIRE_ESM` 실행 시 크래시** — `marked` v18이 ESM-only이고 Electron main은 CommonJS로 번들되어, 앱 실행 즉시 크래시. 핸들러 내부에서 `await import('marked')`로 지연 로드하도록 변경.
+
+---
+
 ## 2.6.0 — 2026-04-22
 
 주요 주제: **문서 변환** (MD ↔ PDF/DOCX)
