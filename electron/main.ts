@@ -1058,7 +1058,44 @@ ipcMain.handle('git:log', async (_e, cwd: string) => {
 })
 
 ipcMain.handle('git:pull', async (_e, cwd: string) => {
-  return gitExec(['pull'], cwd)
+  // Capture HEAD before the pull so we can compute exactly what arrived.
+  const beforeRes = await gitExec(['rev-parse', 'HEAD'], cwd)
+  const before = beforeRes.success ? (beforeRes.output || '').trim() : ''
+
+  const pullRes = await gitExec(['pull'], cwd)
+  if (!pullRes.success) return pullRes
+
+  const afterRes = await gitExec(['rev-parse', 'HEAD'], cwd)
+  const after = afterRes.success ? (afterRes.output || '').trim() : ''
+
+  // HEAD didn't advance → nothing was pulled (already up to date).
+  if (!before || !after || before === after) {
+    return { ...pullRes, alreadyUpToDate: true, commits: [], files: [] }
+  }
+
+  // New commits, tab-separated to be safe with Korean/punctuated subjects.
+  const logRes = await gitExec(
+    ['log', `${before}..${after}`, '--pretty=format:%h%x09%an%x09%ad%x09%s', '--date=short'],
+    cwd,
+  )
+  const commits = logRes.success && logRes.output
+    ? logRes.output.split('\n').filter(Boolean).map((line) => {
+        const [hash, author, date, ...rest] = line.split('\t')
+        return { hash, author, date, subject: rest.join('\t') }
+      })
+    : []
+
+  // Files changed across the pulled range.
+  const diffRes = await gitExec(['diff', '--name-status', `${before}..${after}`], cwd)
+  const files = diffRes.success && diffRes.output
+    ? diffRes.output.split('\n').filter(Boolean).map((line) => {
+        const [status, ...pathParts] = line.split('\t')
+        return { status: (status || '')[0] || '?', path: pathParts.join('\t') }
+      })
+    : []
+
+  const fastForward = (pullRes.output || '').toLowerCase().includes('fast-forward')
+  return { ...pullRes, commits, files, fastForward, alreadyUpToDate: false }
 })
 
 ipcMain.handle('git:push', async (_e, cwd: string) => {
@@ -1070,21 +1107,42 @@ ipcMain.handle('git:push', async (_e, cwd: string) => {
   // Get current branch
   const branchRes = await gitExec(['branch', '--show-current'], cwd)
   const branch = branchRes.output?.trim() || 'master'
-  // Push and capture both stdout+stderr to detect "Everything up-to-date"
-  return new Promise((resolve) => {
-    execFile('git', ['push', '-u', 'origin', branch], { cwd, timeout: 30000, shell: true }, (err, stdout, stderr) => {
-      if (err) {
-        resolve({ success: false, error: stderr.trim() || err.message })
-      } else {
-        const combined = (stdout + stderr).toLowerCase()
-        if (combined.includes('everything up-to-date') || combined.includes('up to date')) {
-          resolve({ success: false, error: '올릴 커밋이 없습니다. 변경사항을 먼저 커밋하세요.' })
-        } else {
-          resolve({ success: true, output: stdout.trimEnd() || stderr.trimEnd() })
-        }
-      }
+  // Push with a generous timeout — first-time auth prompts (credential
+  // helper opening a browser for OAuth) and large pack transfers can
+  // legitimately exceed 30s. A premature timeout would leave the UI in a
+  // misleading "apparently-failed but actually-succeeded" state.
+  const pushResult = await new Promise<{ ok: boolean; out: string; err: string }>((resolve) => {
+    execFile('git', ['push', '-u', 'origin', branch], { cwd, timeout: 300000, shell: true }, (err, stdout, stderr) => {
+      resolve({ ok: !err, out: stdout || '', err: stderr || (err ? err.message : '') })
     })
   })
+
+  if (pushResult.ok) {
+    const combined = (pushResult.out + pushResult.err).toLowerCase()
+    if (combined.includes('everything up-to-date') || combined.includes('up to date')) {
+      return { success: false, error: '올릴 커밋이 없습니다. 변경사항을 먼저 커밋하세요.' }
+    }
+    return { success: true, output: pushResult.out.trimEnd() || pushResult.err.trimEnd() }
+  }
+
+  // Push reported an error — verify against the real remote state. A
+  // timeout or flaky connection can drop the transport *after* git has
+  // already shipped the pack to the server, so the push is effectively
+  // successful even though execFile returned an error.
+  const fetchOk = await new Promise<boolean>((resolve) => {
+    execFile('git', ['fetch', 'origin', branch], { cwd, timeout: 60000, shell: true }, (err) => resolve(!err))
+  })
+  if (fetchOk) {
+    const aheadOut = await new Promise<string | null>((resolve) => {
+      execFile('git', ['rev-list', '--count', `origin/${branch}..HEAD`], { cwd, timeout: 10000 }, (err, stdout) => {
+        resolve(err ? null : (stdout || ''))
+      })
+    })
+    if (aheadOut !== null && parseInt(aheadOut.trim() || '0', 10) === 0) {
+      return { success: true, output: '업로드가 이미 완료된 것으로 확인되었습니다. (이전 시도가 실제로는 성공)' }
+    }
+  }
+  return { success: false, error: pushResult.err.trim() || 'Push 실패' }
 })
 
 ipcMain.handle('git:revert', async (_e, cwd: string, hash: string) => {

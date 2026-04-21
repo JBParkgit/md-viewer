@@ -85,7 +85,15 @@ export interface ElectronAPI {
   gitDiscard: (cwd: string, file: string) => Promise<{ success: boolean; output?: string; error?: string }>
   gitCommit: (cwd: string, message: string) => Promise<{ success: boolean; output?: string; error?: string }>
   gitLog: (cwd: string) => Promise<{ success: boolean; output?: string; error?: string }>
-  gitPull: (cwd: string) => Promise<{ success: boolean; output?: string; error?: string }>
+  gitPull: (cwd: string) => Promise<{
+    success: boolean
+    output?: string
+    error?: string
+    commits?: { hash: string; author: string; date: string; subject: string }[]
+    files?: { status: string; path: string }[]
+    fastForward?: boolean
+    alreadyUpToDate?: boolean
+  }>
   gitPush: (cwd: string) => Promise<{ success: boolean; output?: string; error?: string }>
   gitRevert: (cwd: string, hash: string) => Promise<{ success: boolean; output?: string; error?: string }>
   gitFileLog: (cwd: string, relativePath: string) => Promise<{ success: boolean; output?: string; error?: string }>

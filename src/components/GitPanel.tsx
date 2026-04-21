@@ -100,6 +100,10 @@ export default function GitPanel() {
   const [gitConfigData, setGitConfigData] = useState<{
     userName: string; userEmail: string; remoteFetch: string; remotePush: string; defaultBranch: string
   } | null>(null)
+  const [pullSummary, setPullSummary] = useState<{
+    commits: { hash: string; author: string; date: string; subject: string }[]
+    files: { status: string; path: string }[]
+  } | null>(null)
 
   // Auto-select first project (only if none selected or current selection is invalid)
   useEffect(() => {
@@ -252,7 +256,15 @@ export default function GitPanel() {
     setLoading(true)
     const res = await window.electronAPI.gitPull(selectedProjectPath)
     if (res.success) {
-      showAction('Pull 완료!', 'success')
+      if (res.alreadyUpToDate) {
+        showAction('이미 최신 상태입니다.', 'success')
+        setPullSummary(null)
+      } else {
+        const commitCount = res.commits?.length || 0
+        const fileCount = res.files?.length || 0
+        setPullSummary({ commits: res.commits || [], files: res.files || [] })
+        showAction(`받기 완료: 커밋 ${commitCount}개 · 파일 ${fileCount}개 변경`, 'success')
+      }
       refresh()
       notifyGitChanged()
     } else {
@@ -265,15 +277,19 @@ export default function GitPanel() {
     if (!selectedProjectPath) return
     setLoading(true)
     const res = await window.electronAPI.gitPush(selectedProjectPath)
+    // Always refresh — a silent-success push (timeout after the server
+    // already received the pack) would otherwise leave the ahead badge
+    // stuck, luring the user into pushing again and creating a divergence
+    // on the next Pull. refresh() also resets the loading spinner.
+    refresh()
+    notifyGitChanged()
     if (res.success) {
-      showAction('Push 완료!', 'success')
-      refresh()
-      notifyGitChanged()
+      const msg = res.output?.startsWith('업로드') ? res.output : 'Push 완료!'
+      showAction(msg, 'success')
     } else {
       const err = res.error || ''
       const needsPull = err.includes('fetch first') || err.includes('non-fast-forward') || err.includes('rejected')
       showAction(needsPull ? 'Push 실패: 원격에 새 커밋이 있습니다. Pull 먼저 하세요.' : (err || 'Push 실패'), 'error')
-      setLoading(false)
     }
   }
 
@@ -487,6 +503,75 @@ export default function GitPanel() {
               )}
             </div>
           </div>
+
+          {/* Last pull summary */}
+          {pullSummary && (pullSummary.commits.length > 0 || pullSummary.files.length > 0) && (
+            <div className="border-b border-gray-200 dark:border-gray-700 bg-blue-50/60 dark:bg-blue-900/10">
+              <div className="px-3 py-1.5 flex items-center justify-between">
+                <span className="text-blue-700 dark:text-blue-300 font-medium">
+                  방금 받은 변경 · 커밋 {pullSummary.commits.length}개 · 파일 {pullSummary.files.length}개
+                </span>
+                <button
+                  onClick={() => setPullSummary(null)}
+                  className="p-0.5 rounded hover:bg-blue-100 dark:hover:bg-blue-900/30 text-gray-400 hover:text-gray-600"
+                  title="닫기"
+                >
+                  <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                  </svg>
+                </button>
+              </div>
+              {pullSummary.files.length > 0 && (
+                <div className="pb-1">
+                  {pullSummary.files.slice(0, 50).map((f, i) => {
+                    const name = f.path.split('/').pop() || f.path
+                    const absPath = `${selectedProjectPath}/${f.path}`
+                    return (
+                      <button
+                        key={`pf-${i}`}
+                        onClick={() => {
+                          if (f.status === 'D') return
+                          window.dispatchEvent(new CustomEvent('menu:openFile', {
+                            detail: { path: absPath.replace(/\//g, '\\'), name },
+                          }))
+                        }}
+                        disabled={f.status === 'D'}
+                        className="w-full flex items-center gap-1.5 px-3 py-1 hover:bg-blue-100/60 dark:hover:bg-blue-900/20 disabled:hover:bg-transparent disabled:cursor-not-allowed"
+                        title={f.status === 'D' ? '삭제된 파일' : '파일 열기'}
+                      >
+                        <span className={`font-mono font-bold w-4 text-center ${statusColor(f.status)}`}>{f.status}</span>
+                        <span className="flex-1 truncate text-left text-gray-700 dark:text-gray-300">{f.path}</span>
+                        <span className="text-[10px] text-gray-400 flex-shrink-0">{statusLabel(f.status)}</span>
+                      </button>
+                    )
+                  })}
+                  {pullSummary.files.length > 50 && (
+                    <div className="px-3 py-0.5 text-[10px] text-gray-400">
+                      … 외 {pullSummary.files.length - 50}개
+                    </div>
+                  )}
+                </div>
+              )}
+              {pullSummary.commits.length > 0 && (
+                <div className="px-3 pt-1 pb-2 border-t border-blue-100 dark:border-blue-900/30">
+                  <div className="text-[10px] uppercase tracking-wide text-blue-600/70 dark:text-blue-400/70 mb-1">
+                    새로 받은 커밋
+                  </div>
+                  <div className="space-y-0.5">
+                    {pullSummary.commits.slice(0, 10).map((c, i) => (
+                      <div key={`pc-${i}`} className="flex items-start gap-1.5 text-[11px]" title={`${c.author} · ${c.date}`}>
+                        <span className="font-mono text-blue-500 flex-shrink-0">{c.hash}</span>
+                        <span className="flex-1 text-gray-700 dark:text-gray-300 leading-tight truncate">{c.subject}</span>
+                      </div>
+                    ))}
+                    {pullSummary.commits.length > 10 && (
+                      <div className="text-[10px] text-gray-400">… 외 {pullSummary.commits.length - 10}개</div>
+                    )}
+                  </div>
+                </div>
+              )}
+            </div>
+          )}
 
           {/* Staged files */}
           <div className="border-b border-gray-200 dark:border-gray-700">
