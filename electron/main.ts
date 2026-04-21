@@ -21,18 +21,6 @@ function loadMarked(): Promise<MarkedModule> {
   }
   return markedModulePromise
 }
-import {
-  Document as DocxDocument,
-  Packer,
-  Paragraph,
-  TextRun,
-  HeadingLevel,
-  AlignmentType,
-  Table,
-  TableRow,
-  TableCell,
-  WidthType,
-} from 'docx'
 import * as googleAuth from './googleAuth'
 import * as googleCalendar from './googleCalendar'
 
@@ -1396,113 +1384,64 @@ ipcMain.handle('export:pdf', async (_e, srcMdPath: string, destPath: string) => 
   }
 })
 
-// ── MD → DOCX converter ────────────────────────────────────────────────────
-// Minimal but covers the common shapes: headings, paragraphs, bullet/ordered
-// lists, blockquote, fenced code, tables, and inline bold/italic/link/code.
-// Anything exotic falls back to plain text so nothing is silently dropped.
-function inlineToRuns(tokens: any[]): TextRun[] {
-  const out: TextRun[] = []
-  for (const t of tokens) {
-    if (t.type === 'text') out.push(new TextRun({ text: t.text }))
-    else if (t.type === 'strong') out.push(...inlineToRuns(t.tokens || []).map(r => new TextRun({ ...(r as any).options, bold: true })))
-    else if (t.type === 'em') out.push(...inlineToRuns(t.tokens || []).map(r => new TextRun({ ...(r as any).options, italics: true })))
-    else if (t.type === 'codespan') out.push(new TextRun({ text: t.text, font: 'Consolas' }))
-    else if (t.type === 'link') out.push(new TextRun({ text: t.text, style: 'Hyperlink' }))
-    else if (t.type === 'br') out.push(new TextRun({ text: '', break: 1 }))
-    else if (t.type === 'del') out.push(...inlineToRuns(t.tokens || []).map(r => new TextRun({ ...(r as any).options, strike: true })))
-    else if (t.tokens) out.push(...inlineToRuns(t.tokens))
-    else if (t.text) out.push(new TextRun({ text: t.text }))
-  }
-  return out.length > 0 ? out : [new TextRun({ text: '' })]
-}
-
-function tokensToDocxChildren(tokens: any[]): (Paragraph | Table)[] {
-  const children: (Paragraph | Table)[] = []
-  const headingLevels = [HeadingLevel.HEADING_1, HeadingLevel.HEADING_2, HeadingLevel.HEADING_3, HeadingLevel.HEADING_4, HeadingLevel.HEADING_5, HeadingLevel.HEADING_6]
-
-  for (const tok of tokens) {
-    if (tok.type === 'heading') {
-      children.push(new Paragraph({
-        children: inlineToRuns(tok.tokens || []),
-        heading: headingLevels[Math.max(0, Math.min(5, tok.depth - 1))],
-      }))
-    } else if (tok.type === 'paragraph') {
-      children.push(new Paragraph({ children: inlineToRuns(tok.tokens || []) }))
-    } else if (tok.type === 'blockquote') {
-      const inner = tokensToDocxChildren(tok.tokens || []) as Paragraph[]
-      for (const p of inner) {
-        // Visually mark as quoted by indenting; docx has no native blockquote.
-        children.push(new Paragraph({ children: (p as any).options?.children || [], indent: { left: 720 }, alignment: AlignmentType.LEFT }))
-      }
-    } else if (tok.type === 'code') {
-      for (const line of String(tok.text || '').split('\n')) {
-        children.push(new Paragraph({ children: [new TextRun({ text: line, font: 'Consolas' })] }))
-      }
-    } else if (tok.type === 'list') {
-      for (const item of tok.items || []) {
-        const itemTokens = item.tokens || []
-        // Flatten nested paragraph tokens inside list items.
-        const runs: TextRun[] = []
-        for (const it of itemTokens) {
-          if (it.type === 'text' && it.tokens) runs.push(...inlineToRuns(it.tokens))
-          else if (it.type === 'text') runs.push(new TextRun({ text: it.text }))
-          else if (it.tokens) runs.push(...inlineToRuns(it.tokens))
-        }
-        children.push(new Paragraph({
-          children: runs.length ? runs : [new TextRun({ text: item.text || '' })],
-          bullet: tok.ordered ? undefined : { level: 0 },
-          numbering: tok.ordered ? { reference: 'ordered-list', level: 0 } : undefined,
-        }))
-      }
-    } else if (tok.type === 'table') {
-      const rows: TableRow[] = []
-      const makeCell = (cellTokens: any[]) => new TableCell({
-        children: [new Paragraph({ children: inlineToRuns(cellTokens || []) })],
-      })
-      if (tok.header) {
-        rows.push(new TableRow({
-          children: tok.header.map((h: any) => makeCell(h.tokens || [])),
-        }))
-      }
-      for (const row of tok.rows || []) {
-        rows.push(new TableRow({
-          children: row.map((c: any) => makeCell(c.tokens || [])),
-        }))
-      }
-      if (rows.length > 0) {
-        children.push(new Table({ rows, width: { size: 100, type: WidthType.PERCENTAGE } }))
-      }
-    } else if (tok.type === 'hr') {
-      children.push(new Paragraph({ children: [new TextRun({ text: '─────────────' })] }))
-    } else if (tok.type === 'space') {
-      children.push(new Paragraph({ children: [new TextRun({ text: '' })] }))
-    } else if (tok.text) {
-      children.push(new Paragraph({ children: [new TextRun({ text: tok.text })] }))
-    }
-  }
-  return children
-}
-
 // ── IPC: Export MD → DOCX ──────────────────────────────────────────────────
+// Delegates to html-to-docx: marked renders MD → HTML, then the library maps
+// HTML elements (headings, paragraphs, lists, tables, blockquote, code,
+// inline strong/em/del/link/img) to OOXML. Avoids the bugs in our previous
+// hand-rolled token→docx walker (style propagation, nested lists, etc.).
+// Local images referenced by relative path are read from disk and inlined
+// as data URIs so Word embeds them rather than showing broken links.
+async function inlineLocalImagesInHtml(html: string, baseDir: string): Promise<string> {
+  const imgRe = /<img([^>]*?)\ssrc=["']([^"']+)["']([^>]*)>/gi
+  const replacements: { match: string; replacement: string }[] = []
+  let match: RegExpExecArray | null
+  while ((match = imgRe.exec(html)) !== null) {
+    const src = match[2]
+    if (/^(https?:|data:)/i.test(src)) continue
+    try {
+      const absPath = /^[a-zA-Z]:[\\/]|^[\\/]/.test(src) ? src : join(baseDir, src)
+      if (!existsSync(absPath)) continue
+      const buf = await readFile(absPath)
+      const ext = extname(absPath).slice(1).toLowerCase() || 'png'
+      const mime = ext === 'jpg' ? 'image/jpeg' : `image/${ext}`
+      const dataUri = `data:${mime};base64,${buf.toString('base64')}`
+      replacements.push({
+        match: match[0],
+        replacement: `<img${match[1]} src="${dataUri}"${match[3]}>`,
+      })
+    } catch { /* skip broken images */ }
+  }
+  let out = html
+  for (const r of replacements) out = out.replace(r.match, r.replacement)
+  return out
+}
+
 ipcMain.handle('export:docx', async (_e, srcMdPath: string, destPath: string) => {
   try {
     const md = await readFile(srcMdPath, 'utf-8')
     // Strip YAML frontmatter — it's metadata, not document body content.
     const body = md.replace(/^---\r?\n[\s\S]*?\r?\n---\r?\n?/, '')
     const { marked } = await loadMarked()
-    const tokens = marked.lexer(body)
-    const children = tokensToDocxChildren(tokens as any[])
-    const doc = new DocxDocument({
-      numbering: {
-        config: [{
-          reference: 'ordered-list',
-          levels: [{ level: 0, format: 'decimal', text: '%1.', alignment: AlignmentType.START }],
-        }],
-      },
-      sections: [{ children }],
+    const rawHtml = marked.parse(body, { async: false }) as string
+    const baseDir = dirname(srcMdPath)
+    const htmlWithImages = await inlineLocalImagesInHtml(rawHtml, baseDir)
+    // Wrap in a minimal document — html-to-docx expects a full or fragment
+    // HTML; giving it a <html><body> shell avoids edge cases.
+    const fullHtml = `<!DOCTYPE html><html><head><meta charset="utf-8"></head><body>${htmlWithImages}</body></html>`
+
+    // html-to-docx ships CJS (dist/html-to-docx.umd.js). The default export
+    // is the async converter. TS types are loose, so cast.
+    const htmlToDocxMod = require('html-to-docx')
+    const htmlToDocx: (html: string, header?: string | null, opts?: Record<string, unknown>) => Promise<Buffer | ArrayBuffer> =
+      htmlToDocxMod.default || htmlToDocxMod
+    const result = await htmlToDocx(fullHtml, null, {
+      margins: { top: 1440, bottom: 1440, left: 1440, right: 1440 }, // 1 inch (twips)
+      table: { row: { cantSplit: true } },
+      font: 'Malgun Gothic',
+      fontSize: 22, // half-points → 11pt
     })
-    const buffer = await Packer.toBuffer(doc)
-    await writeFile(destPath, buffer)
+    const buf = Buffer.isBuffer(result) ? result : Buffer.from(result as ArrayBuffer)
+    await writeFile(destPath, buf)
     return { success: true }
   } catch (err: unknown) {
     return { success: false, error: err instanceof Error ? err.message : String(err) }
