@@ -52,7 +52,15 @@ function KanbanProjectRow({ project, isActive, onClick }: KanbanProjectRowProps)
     setIsPulling(true)
     const res = await window.electronAPI.gitPull(project.path)
     setIsPulling(false)
-    setPullMsg(res.success ? '완료' : '실패')
+    if (res.success && !res.alreadyUpToDate) {
+      useAppStore.getState().setPullResult({
+        projectPath: project.path,
+        projectName: project.name,
+        commits: res.commits || [],
+        files: res.files || [],
+      })
+    }
+    setPullMsg(res.success ? (res.alreadyUpToDate ? '최신' : '완료') : '실패')
     setTimeout(() => setPullMsg(null), 2500)
   }
 

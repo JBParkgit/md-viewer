@@ -564,7 +564,19 @@ export default function ProjectTree({ project, projectIndex, searchQuery, onOpen
                     if (res.success) {
                       loadNodes()
                       loadGitStatus()
-                      setGitActionMsg('Pull 완료')
+                      if (res.alreadyUpToDate) {
+                        setGitActionMsg('이미 최신 상태')
+                      } else {
+                        const c = res.commits?.length || 0
+                        const f = res.files?.length || 0
+                        useAppStore.getState().setPullResult({
+                          projectPath: project.path,
+                          projectName: project.name,
+                          commits: res.commits || [],
+                          files: res.files || [],
+                        })
+                        setGitActionMsg(`Pull 완료 · ${c}커밋·${f}파일`)
+                      }
                     } else {
                       setGitActionMsg(res.error || 'Pull 실패')
                     }
@@ -1068,6 +1080,30 @@ export default function ProjectTree({ project, projectIndex, searchQuery, onOpen
                 </button>
               </>
             )}
+            <button
+              onClick={async () => {
+                setContextMenu(null)
+                // Obsidian URI can only target files within a known vault,
+                // not bare folders. Anchor on the first .md file in the
+                // project — Obsidian then opens the containing vault.
+                const mdFiles = await window.electronAPI.listMdFiles(project.path)
+                if (!mdFiles || mdFiles.length === 0) {
+                  alert('이 프로젝트에 .md 파일이 없어 Obsidian에서 열 수 없습니다. 먼저 Obsidian에서 vault로 등록해 주세요.')
+                  return
+                }
+                const res = await window.electronAPI.openInObsidian(mdFiles[0])
+                if (!res.success) {
+                  alert(res.error || 'Obsidian을 열 수 없습니다. Obsidian이 설치되어 있고 이 폴더가 vault로 등록되어 있는지 확인하세요.')
+                }
+              }}
+              className="w-full flex items-center gap-2 px-3 py-1.5 text-xs hover:bg-gray-100 dark:hover:bg-gray-700 text-left"
+              title="이 프로젝트를 Obsidian에서 열기 (vault로 등록되어 있어야 합니다)"
+            >
+              <svg className="w-3.5 h-3.5 text-purple-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" />
+              </svg>
+              Obsidian에서 열기
+            </button>
             <button
               onClick={() => { loadNodes(); loadGitStatus(); setContextMenu(null) }}
               className="w-full flex items-center gap-2 px-3 py-1.5 text-xs hover:bg-gray-100 dark:hover:bg-gray-700 text-left"

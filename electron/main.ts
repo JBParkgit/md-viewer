@@ -475,10 +475,17 @@ ipcMain.handle('shell:showItemInFolder', (_e, filePath: string) => {
   shell.showItemInFolder(filePath)
 })
 
-ipcMain.handle('shell:openTerminal', (_e, dirPath: string) => {
+ipcMain.handle('shell:openTerminal', async (_e, dirPath: string) => {
   const { exec } = require('child_process')
   if (process.platform === 'win32') {
-    exec(`start cmd /k "cd /d "${dirPath}""`)
+    // Prefer Windows Terminal (wt.exe) for proper Korean IME and ANSI
+    // handling. Fall back to legacy conhost-hosted cmd if wt isn't present.
+    const hasWT = await detectWindowsTerminal()
+    if (hasWT) {
+      exec(`wt -d "${dirPath}"`)
+    } else {
+      exec(`start cmd /k "cd /d "${dirPath}""`)
+    }
   } else if (process.platform === 'darwin') {
     exec(`open -a Terminal "${dirPath}"`)
   } else {

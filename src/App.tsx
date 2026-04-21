@@ -8,6 +8,7 @@ import EditorPane from './components/EditorPane'
 import KanbanBoard from './components/KanbanBoard'
 import CalendarView from './components/CalendarView'
 import WorkflowBoard from './components/WorkflowBoard'
+import PullResultModal from './components/PullResultModal'
 import { isRecentlySaved } from './utils/recentSave'
 
 // Allow mdTemplates to resolve the current user (for {{author}}) without a circular import
@@ -323,6 +324,7 @@ export default function App() {
   return (
     <div className="flex flex-col h-full bg-white dark:bg-gray-900 text-gray-900 dark:text-gray-100">
       <Toolbar />
+      <PullResultModal />
       <div className="flex flex-1 overflow-hidden">
         <Sidebar
           onOpenFile={(p, n) => openFile(p, n, true)}

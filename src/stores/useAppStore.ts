@@ -139,6 +139,19 @@ interface AppStore {
   // Current user (for workflow author / reviewer identity)
   currentUser: string
   setCurrentUser: (name: string) => void
+
+  // Last Pull result — set from any Pull entry point (Git tab, file tree,
+  // kanban sidebar). A modal subscribes to this and shows the summary so
+  // the user doesn't need to open the Git tab to see what arrived.
+  pullResult: PullResult | null
+  setPullResult: (r: PullResult | null) => void
+}
+
+export interface PullResult {
+  projectPath: string
+  projectName: string
+  commits: { hash: string; author: string; date: string; subject: string }[]
+  files: { status: string; path: string }[]
 }
 
 let tabCounter = 0
@@ -654,4 +667,8 @@ export const useAppStore = create<AppStore>((set, get) => ({
     window.electronAPI.storeSet('currentUser', name)
     set({ currentUser: name })
   },
+
+  // ── Pull result (last Pull's changes) ────────────────────────────────────
+  pullResult: null,
+  setPullResult: (r) => set({ pullResult: r }),
 }))
