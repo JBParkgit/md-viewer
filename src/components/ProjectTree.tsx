@@ -110,8 +110,10 @@ export default function ProjectTree({ project, projectIndex, searchQuery, onOpen
     }
   }, [contextMenu])
   const [installedIDEs, setInstalledIDEs] = useState<{ id: string; name: string; cmd: string }[]>([])
+  const [hasClaude, setHasClaude] = useState(false)
   useEffect(() => {
     window.electronAPI.detectIDEs().then(setInstalledIDEs)
+    window.electronAPI.detectClaude().then(setHasClaude)
   }, [])
   const [isRenaming, setIsRenaming] = useState(false)
   const [renameValue, setRenameValue] = useState(project.name)
@@ -1043,6 +1045,29 @@ export default function ProjectTree({ project, projectIndex, searchQuery, onOpen
                 {ide.name}로 열기
               </button>
             ))}
+            {hasClaude && (
+              <>
+                <button
+                  onClick={() => { window.electronAPI.openClaude(project.path, false); setContextMenu(null) }}
+                  className="w-full flex items-center gap-2 px-3 py-1.5 text-xs hover:bg-gray-100 dark:hover:bg-gray-700 text-left"
+                >
+                  <svg className="w-3.5 h-3.5 text-orange-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 10V3L4 14h7v7l9-11h-7z" />
+                  </svg>
+                  Claude Code 실행
+                </button>
+                <button
+                  onClick={() => { window.electronAPI.openClaude(project.path, true); setContextMenu(null) }}
+                  className="w-full flex items-center gap-2 px-3 py-1.5 text-xs hover:bg-gray-100 dark:hover:bg-gray-700 text-left"
+                  title="--dangerously-skip-permissions 플래그로 실행 (권한 확인 생략)"
+                >
+                  <svg className="w-3.5 h-3.5 text-red-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01M5 12a7 7 0 1114 0 7 7 0 01-14 0z" />
+                  </svg>
+                  Claude Code 실행 <span className="text-[10px] text-red-500">(권한 건너뜀)</span>
+                </button>
+              </>
+            )}
             <button
               onClick={() => { loadNodes(); loadGitStatus(); setContextMenu(null) }}
               className="w-full flex items-center gap-2 px-3 py-1.5 text-xs hover:bg-gray-100 dark:hover:bg-gray-700 text-left"

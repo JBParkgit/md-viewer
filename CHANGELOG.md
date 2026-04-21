@@ -1,5 +1,17 @@
 # Changelog
 
+## 2.4.0 — 2026-04-21
+
+### 추가 — Claude Code 실행
+
+- 프로젝트 우클릭 메뉴에 **Claude Code 실행** / **Claude Code 실행 (권한 건너뜀)** 두 항목 추가.
+  - 첫 번째: `cd <프로젝트> && claude`
+  - 두 번째: `cd <프로젝트> && claude --dangerously-skip-permissions` (빨간 경고 아이콘)
+- `detectClaude()`로 PATH에 `claude` 있는지 감지해 설치된 경우에만 표시.
+- Claude Code는 TTY가 필요하므로 새 OS 터미널 창을 여는 방식. 앱 내부 PTY는 아님.
+
+---
+
 ## 2.3.0 — 2026-04-21
 
 주요 주제: **Git UX 개선**, **텍스트 파일 지원 확대**, **미리보기 탭 버그 수정**

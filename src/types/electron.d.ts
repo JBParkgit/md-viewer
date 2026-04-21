@@ -68,6 +68,8 @@ export interface ElectronAPI {
   openTerminal: (path: string) => Promise<void>
   detectIDEs: () => Promise<{ id: string; name: string; cmd: string }[]>
   openInIDE: (ideCmd: string, dirPath: string) => Promise<void>
+  detectClaude: () => Promise<boolean>
+  openClaude: (dirPath: string, skipPerms: boolean) => Promise<void>
   openPath: (path: string) => Promise<string | null>
   openInObsidian: (path: string) => Promise<{ success: boolean; error?: string }>
   startDrag: (filePath: string) => void

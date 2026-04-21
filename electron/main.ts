@@ -521,6 +521,43 @@ ipcMain.handle('shell:openInIDE', async (_e, ideCmd: string, dirPath: string) =>
   exec(`"${ideCmd}" "${dirPath}"`)
 })
 
+// ── IPC: Detect Claude Code CLI ─────────────────────────────────────────────
+let detectedClaude: boolean | null = null
+
+async function detectClaude(): Promise<boolean> {
+  if (detectedClaude !== null) return detectedClaude
+  const which = process.platform === 'win32' ? 'where' : 'which'
+  try {
+    await new Promise<void>((resolve, reject) => {
+      execFile(which, ['claude'], (err) => err ? reject(err) : resolve())
+    })
+    detectedClaude = true
+  } catch {
+    detectedClaude = false
+  }
+  return detectedClaude
+}
+
+ipcMain.handle('shell:detectClaude', async () => {
+  return detectClaude()
+})
+
+// Open a new terminal in `dirPath` and start `claude` (optionally with
+// --dangerously-skip-permissions). Must spawn a real OS terminal — Claude
+// Code requires a TTY, so we can't run it with plain child_process.exec.
+ipcMain.handle('shell:openClaude', async (_e, dirPath: string, skipPerms: boolean) => {
+  const { exec } = require('child_process')
+  const flag = skipPerms ? ' --dangerously-skip-permissions' : ''
+  if (process.platform === 'win32') {
+    exec(`start cmd /k "cd /d "${dirPath}" && claude${flag}"`)
+  } else if (process.platform === 'darwin') {
+    const script = `tell application "Terminal" to do script "cd ${JSON.stringify(dirPath)}; claude${flag}"`
+    exec(`osascript -e ${JSON.stringify(script)}`)
+  } else {
+    exec(`x-terminal-emulator -e bash -c 'cd "${dirPath}"; claude${flag}; exec bash'`)
+  }
+})
+
 // ── IPC: Open file with default OS app ───────────────────────────────────────
 ipcMain.handle('shell:openPath', async (_e, filePath: string) => {
   const err = await shell.openPath(filePath)

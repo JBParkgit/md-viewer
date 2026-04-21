@@ -48,6 +48,8 @@ contextBridge.exposeInMainWorld('electronAPI', {
   openTerminal: (path: string) => ipcRenderer.invoke('shell:openTerminal', path),
   detectIDEs: () => ipcRenderer.invoke('shell:detectIDEs'),
   openInIDE: (ideCmd: string, dirPath: string) => ipcRenderer.invoke('shell:openInIDE', ideCmd, dirPath),
+  detectClaude: () => ipcRenderer.invoke('shell:detectClaude'),
+  openClaude: (dirPath: string, skipPerms: boolean) => ipcRenderer.invoke('shell:openClaude', dirPath, skipPerms),
   openPath: (path: string) => ipcRenderer.invoke('shell:openPath', path),
   openInObsidian: (path: string) => ipcRenderer.invoke('shell:openInObsidian', path),
   startDrag: (filePath: string) => ipcRenderer.send('native:startDrag', filePath),
