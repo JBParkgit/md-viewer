@@ -1,6 +1,7 @@
 import { useState, useEffect, useCallback } from 'react'
 import { useAppStore } from '../stores/useAppStore'
 import HelpModal from './HelpModal'
+import { exportMdToPdf, exportMdToDocx, importDocxAsMd } from '../utils/exportImport'
 
 interface MenuItem {
   label?: string
@@ -52,12 +53,47 @@ export default function Toolbar() {
     }
   }, [])
 
+  const getActiveMdTab = () => {
+    const s = useAppStore.getState()
+    const pane = s.activePaneId
+    const id = pane === 'right' ? s.rightActiveTabId : s.activeTabId
+    const list = pane === 'right' ? s.rightTabs : s.tabs
+    const tab = list.find(t => t.id === id)
+    if (!tab) { alert('열려있는 문서가 없습니다.'); return null }
+    if (!/\.(md|markdown)$/i.test(tab.fileName)) {
+      alert('마크다운 파일(.md)만 내보낼 수 있습니다.'); return null
+    }
+    return tab
+  }
+
+  const handleExportPdf = useCallback(() => {
+    const tab = getActiveMdTab()
+    if (tab) exportMdToPdf(tab.filePath, tab.fileName)
+  }, [])
+
+  const handleExportDocx = useCallback(() => {
+    const tab = getActiveMdTab()
+    if (tab) exportMdToDocx(tab.filePath, tab.fileName)
+  }, [])
+
+  const handleImportDocx = useCallback(async () => {
+    const paths = await window.electronAPI.openFileDialog()
+    if (!paths || paths.length === 0) return
+    const docx = paths.find(p => /\.docx?$/i.test(p))
+    if (!docx) { alert('.docx 파일을 선택해 주세요.'); return }
+    importDocxAsMd(docx)
+  }, [])
+
   const menus: MenuDef[] = [
     {
       label: '파일',
       items: [
         { label: '파일 열기', shortcut: 'Ctrl+O', action: handleOpenFile },
         { label: '프로젝트 폴더 추가', shortcut: 'Ctrl+Shift+O', action: handleAddProject },
+        { separator: true },
+        { label: '현재 문서를 PDF로 내보내기...', action: handleExportPdf },
+        { label: '현재 문서를 Word(DOCX)로 내보내기...', action: handleExportDocx },
+        { label: 'Word 문서를 Markdown으로 가져오기...', action: handleImportDocx },
         { separator: true },
         { label: '탐색기에서 .md 파일 연결 등록', action: handleRegisterMdAssociation },
         { separator: true },

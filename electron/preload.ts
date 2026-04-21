@@ -44,6 +44,14 @@ contextBridge.exposeInMainWorld('electronAPI', {
   createDir: (dirPath: string) => ipcRenderer.invoke('fs:createDir', dirPath),
   saveFolder: () => ipcRenderer.invoke('dialog:saveFolder'),
   cloneFolder: () => ipcRenderer.invoke('dialog:cloneFolder'),
+  saveAs: (defaultPath: string, filters: { name: string; extensions: string[] }[]) =>
+    ipcRenderer.invoke('dialog:saveAs', defaultPath, filters),
+  exportPdf: (srcMdPath: string, destPath: string) =>
+    ipcRenderer.invoke('export:pdf', srcMdPath, destPath),
+  exportDocx: (srcMdPath: string, destPath: string) =>
+    ipcRenderer.invoke('export:docx', srcMdPath, destPath),
+  importDocxToMd: (srcDocxPath: string, destPath: string) =>
+    ipcRenderer.invoke('import:docxToMd', srcDocxPath, destPath),
   showItemInFolder: (path: string) => ipcRenderer.invoke('shell:showItemInFolder', path),
   openTerminal: (path: string) => ipcRenderer.invoke('shell:openTerminal', path),
   detectIDEs: () => ipcRenderer.invoke('shell:detectIDEs'),

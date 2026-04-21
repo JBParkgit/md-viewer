@@ -70,6 +70,10 @@ export interface ElectronAPI {
   openInIDE: (ideCmd: string, dirPath: string) => Promise<void>
   detectClaude: () => Promise<boolean>
   openClaude: (dirPath: string, skipPerms: boolean) => Promise<void>
+  saveAs: (defaultPath: string, filters: { name: string; extensions: string[] }[]) => Promise<string | null>
+  exportPdf: (srcMdPath: string, destPath: string) => Promise<{ success: boolean; error?: string }>
+  exportDocx: (srcMdPath: string, destPath: string) => Promise<{ success: boolean; error?: string }>
+  importDocxToMd: (srcDocxPath: string, destPath: string) => Promise<{ success: boolean; error?: string; messages?: string[] }>
   openPath: (path: string) => Promise<string | null>
   openInObsidian: (path: string) => Promise<{ success: boolean; error?: string }>
   startDrag: (filePath: string) => void

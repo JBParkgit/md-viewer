@@ -1,6 +1,6 @@
 {
   "name": "docuflow",
-  "version": "2.5.1",
+  "version": "2.6.0",
   "description": "Docuflow - Document Workspace & Editor",
   "main": "dist-electron/main.js",
   "scripts": {
@@ -19,9 +19,11 @@
     "@codemirror/view": "^6.36.3",
     "@uiw/react-codemirror": "^4.25.8",
     "chokidar": "^4.0.3",
+    "docx": "^9.6.1",
     "electron-store": "^8.2.0",
     "googleapis": "^171.4.0",
     "mammoth": "^1.12.0",
+    "marked": "^18.0.2",
     "mermaid": "^11.14.0",
     "react": "^18.3.1",
     "react-dom": "^18.3.1",

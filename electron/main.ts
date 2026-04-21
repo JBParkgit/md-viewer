@@ -1,11 +1,24 @@
 import { app, BrowserWindow, ipcMain, dialog, nativeTheme, shell, nativeImage, clipboard } from 'electron'
-import { join, basename, extname } from 'path'
-import { readdir, readFile, writeFile, stat, mkdir, copyFile } from 'fs/promises'
+import { join, basename, extname, dirname } from 'path'
+import { readdir, readFile, writeFile, stat, mkdir, copyFile, unlink } from 'fs/promises'
 import { statSync, existsSync } from 'fs'
 import { execFile } from 'child_process'
 import mammoth from 'mammoth'
 import Store from 'electron-store'
 import chokidar from 'chokidar'
+import { marked } from 'marked'
+import {
+  Document as DocxDocument,
+  Packer,
+  Paragraph,
+  TextRun,
+  HeadingLevel,
+  AlignmentType,
+  Table,
+  TableRow,
+  TableCell,
+  WidthType,
+} from 'docx'
 import * as googleAuth from './googleAuth'
 import * as googleCalendar from './googleCalendar'
 
@@ -1273,6 +1286,230 @@ ipcMain.handle('git:config', async (_e, cwd: string) => {
       remotePush: remotePush.output || '',
       defaultBranch: defaultBranch.output || '',
     }),
+  }
+})
+
+// ── IPC: Save As dialog ────────────────────────────────────────────────────
+// Generic save dialog so renderer can pick an output path for exports.
+// Renderer passes a default path (usually source-file-next-door) + extension
+// filters; Electron returns the absolute path the user chose (or null if
+// cancelled). Keeping the policy in main lets all export/import flows share
+// the same picker, and keeps the "output location" UX identical across them.
+ipcMain.handle('dialog:saveAs', async (_e, defaultPath: string, filters: Electron.FileFilter[]) => {
+  if (!mainWindow) return null
+  const result = await dialog.showSaveDialog(mainWindow, {
+    title: '다른 이름으로 저장',
+    defaultPath,
+    filters,
+  })
+  if (result.canceled || !result.filePath) return null
+  return result.filePath
+})
+
+// ── Markdown → HTML (shared) ───────────────────────────────────────────────
+// We feed marked with GFM so tables/task-lists render. The breaks option is
+// off so normal markdown line-break behavior (blank line = paragraph) holds.
+marked.setOptions({ gfm: true, breaks: false })
+
+function buildPrintableHtml(md: string, baseDir: string, title: string): string {
+  const bodyHtml = marked.parse(md, { async: false }) as string
+  // Minimal but readable print style. No reliance on app CSS so the output
+  // is self-contained and doesn't drag in Docuflow's sidebar/toolbar styles.
+  const css = `
+    @page { margin: 18mm 16mm; }
+    html, body { margin: 0; padding: 0; }
+    body {
+      font-family: 'Malgun Gothic', 'Segoe UI', -apple-system, sans-serif;
+      color: #222; line-height: 1.65; font-size: 11pt;
+    }
+    h1, h2, h3, h4, h5, h6 { font-weight: 600; margin: 1.2em 0 0.5em; line-height: 1.3; }
+    h1 { font-size: 1.9em; border-bottom: 2px solid #ddd; padding-bottom: 0.2em; }
+    h2 { font-size: 1.5em; border-bottom: 1px solid #eee; padding-bottom: 0.15em; }
+    h3 { font-size: 1.25em; } h4 { font-size: 1.1em; }
+    p { margin: 0.6em 0; }
+    code { background: #f5f5f5; padding: 1px 5px; border-radius: 3px; font-family: Consolas, monospace; font-size: 0.92em; }
+    pre { background: #f6f8fa; padding: 12px 14px; border-radius: 6px; overflow: auto; font-size: 0.88em; page-break-inside: avoid; }
+    pre code { background: transparent; padding: 0; }
+    blockquote { margin: 0.6em 0; padding: 0.2em 1em; border-left: 4px solid #ccc; color: #555; }
+    ul, ol { padding-left: 1.6em; }
+    li { margin: 0.15em 0; }
+    table { border-collapse: collapse; margin: 0.8em 0; max-width: 100%; }
+    th, td { border: 1px solid #ccc; padding: 6px 10px; text-align: left; }
+    th { background: #f3f4f6; }
+    img { max-width: 100%; height: auto; }
+    a { color: #0366d6; text-decoration: none; }
+    hr { border: 0; border-top: 1px solid #ddd; margin: 1.2em 0; }
+  `
+  // <base> lets relative image paths in the markdown resolve against the
+  // source file's folder when the print window loads this HTML.
+  const baseHref = 'file:///' + baseDir.replace(/\\/g, '/').replace(/^\/+/, '') + '/'
+  return `<!DOCTYPE html><html><head><meta charset="utf-8"><base href="${baseHref}"><title>${title}</title><style>${css}</style></head><body>${bodyHtml}</body></html>`
+}
+
+// ── IPC: Export MD → PDF ───────────────────────────────────────────────────
+// Strategy: render markdown to self-contained HTML in main, load it in a
+// hidden BrowserWindow, then printToPDF. Keeps the main UI untouched during
+// export (no CSS contamination, no flicker) and gives a clean output.
+ipcMain.handle('export:pdf', async (_e, srcMdPath: string, destPath: string) => {
+  try {
+    const md = await readFile(srcMdPath, 'utf-8')
+    const baseDir = dirname(srcMdPath)
+    const html = buildPrintableHtml(md, baseDir, basename(srcMdPath))
+    const tmpHtml = join(app.getPath('temp'), `docuflow-pdf-${Date.now()}.html`)
+    await writeFile(tmpHtml, html, 'utf-8')
+
+    const win = new BrowserWindow({
+      show: false,
+      webPreferences: { webSecurity: false, sandbox: false },
+    })
+    try {
+      await win.loadFile(tmpHtml)
+      // Give browser a tick to lay out images/fonts.
+      await new Promise((r) => setTimeout(r, 200))
+      const pdfBuffer = await win.webContents.printToPDF({
+        printBackground: true,
+        pageSize: 'A4',
+        margins: { top: 0.5, bottom: 0.5, left: 0.5, right: 0.5 },
+      })
+      await writeFile(destPath, pdfBuffer)
+    } finally {
+      if (!win.isDestroyed()) win.close()
+      await unlink(tmpHtml).catch(() => {})
+    }
+    return { success: true }
+  } catch (err: unknown) {
+    return { success: false, error: err instanceof Error ? err.message : String(err) }
+  }
+})
+
+// ── MD → DOCX converter ────────────────────────────────────────────────────
+// Minimal but covers the common shapes: headings, paragraphs, bullet/ordered
+// lists, blockquote, fenced code, tables, and inline bold/italic/link/code.
+// Anything exotic falls back to plain text so nothing is silently dropped.
+function inlineToRuns(tokens: any[]): TextRun[] {
+  const out: TextRun[] = []
+  for (const t of tokens) {
+    if (t.type === 'text') out.push(new TextRun({ text: t.text }))
+    else if (t.type === 'strong') out.push(...inlineToRuns(t.tokens || []).map(r => new TextRun({ ...(r as any).options, bold: true })))
+    else if (t.type === 'em') out.push(...inlineToRuns(t.tokens || []).map(r => new TextRun({ ...(r as any).options, italics: true })))
+    else if (t.type === 'codespan') out.push(new TextRun({ text: t.text, font: 'Consolas' }))
+    else if (t.type === 'link') out.push(new TextRun({ text: t.text, style: 'Hyperlink' }))
+    else if (t.type === 'br') out.push(new TextRun({ text: '', break: 1 }))
+    else if (t.type === 'del') out.push(...inlineToRuns(t.tokens || []).map(r => new TextRun({ ...(r as any).options, strike: true })))
+    else if (t.tokens) out.push(...inlineToRuns(t.tokens))
+    else if (t.text) out.push(new TextRun({ text: t.text }))
+  }
+  return out.length > 0 ? out : [new TextRun({ text: '' })]
+}
+
+function tokensToDocxChildren(tokens: any[]): (Paragraph | Table)[] {
+  const children: (Paragraph | Table)[] = []
+  const headingLevels = [HeadingLevel.HEADING_1, HeadingLevel.HEADING_2, HeadingLevel.HEADING_3, HeadingLevel.HEADING_4, HeadingLevel.HEADING_5, HeadingLevel.HEADING_6]
+
+  for (const tok of tokens) {
+    if (tok.type === 'heading') {
+      children.push(new Paragraph({
+        children: inlineToRuns(tok.tokens || []),
+        heading: headingLevels[Math.max(0, Math.min(5, tok.depth - 1))],
+      }))
+    } else if (tok.type === 'paragraph') {
+      children.push(new Paragraph({ children: inlineToRuns(tok.tokens || []) }))
+    } else if (tok.type === 'blockquote') {
+      const inner = tokensToDocxChildren(tok.tokens || []) as Paragraph[]
+      for (const p of inner) {
+        // Visually mark as quoted by indenting; docx has no native blockquote.
+        children.push(new Paragraph({ children: (p as any).options?.children || [], indent: { left: 720 }, alignment: AlignmentType.LEFT }))
+      }
+    } else if (tok.type === 'code') {
+      for (const line of String(tok.text || '').split('\n')) {
+        children.push(new Paragraph({ children: [new TextRun({ text: line, font: 'Consolas' })] }))
+      }
+    } else if (tok.type === 'list') {
+      for (const item of tok.items || []) {
+        const itemTokens = item.tokens || []
+        // Flatten nested paragraph tokens inside list items.
+        const runs: TextRun[] = []
+        for (const it of itemTokens) {
+          if (it.type === 'text' && it.tokens) runs.push(...inlineToRuns(it.tokens))
+          else if (it.type === 'text') runs.push(new TextRun({ text: it.text }))
+          else if (it.tokens) runs.push(...inlineToRuns(it.tokens))
+        }
+        children.push(new Paragraph({
+          children: runs.length ? runs : [new TextRun({ text: item.text || '' })],
+          bullet: tok.ordered ? undefined : { level: 0 },
+          numbering: tok.ordered ? { reference: 'ordered-list', level: 0 } : undefined,
+        }))
+      }
+    } else if (tok.type === 'table') {
+      const rows: TableRow[] = []
+      const makeCell = (cellTokens: any[]) => new TableCell({
+        children: [new Paragraph({ children: inlineToRuns(cellTokens || []) })],
+      })
+      if (tok.header) {
+        rows.push(new TableRow({
+          children: tok.header.map((h: any) => makeCell(h.tokens || [])),
+        }))
+      }
+      for (const row of tok.rows || []) {
+        rows.push(new TableRow({
+          children: row.map((c: any) => makeCell(c.tokens || [])),
+        }))
+      }
+      if (rows.length > 0) {
+        children.push(new Table({ rows, width: { size: 100, type: WidthType.PERCENTAGE } }))
+      }
+    } else if (tok.type === 'hr') {
+      children.push(new Paragraph({ children: [new TextRun({ text: '─────────────' })] }))
+    } else if (tok.type === 'space') {
+      children.push(new Paragraph({ children: [new TextRun({ text: '' })] }))
+    } else if (tok.text) {
+      children.push(new Paragraph({ children: [new TextRun({ text: tok.text })] }))
+    }
+  }
+  return children
+}
+
+// ── IPC: Export MD → DOCX ──────────────────────────────────────────────────
+ipcMain.handle('export:docx', async (_e, srcMdPath: string, destPath: string) => {
+  try {
+    const md = await readFile(srcMdPath, 'utf-8')
+    // Strip YAML frontmatter — it's metadata, not document body content.
+    const body = md.replace(/^---\r?\n[\s\S]*?\r?\n---\r?\n?/, '')
+    const tokens = marked.lexer(body)
+    const children = tokensToDocxChildren(tokens as any[])
+    const doc = new DocxDocument({
+      numbering: {
+        config: [{
+          reference: 'ordered-list',
+          levels: [{ level: 0, format: 'decimal', text: '%1.', alignment: AlignmentType.START }],
+        }],
+      },
+      sections: [{ children }],
+    })
+    const buffer = await Packer.toBuffer(doc)
+    await writeFile(destPath, buffer)
+    return { success: true }
+  } catch (err: unknown) {
+    return { success: false, error: err instanceof Error ? err.message : String(err) }
+  }
+})
+
+// ── IPC: Import DOCX → MD ──────────────────────────────────────────────────
+// mammoth's convertToMarkdown produces GFM-compatible output. Tables, lists,
+// inline formatting, and links carry over cleanly; advanced features
+// (footnotes, text boxes, tracked changes) are lossy but won't throw.
+ipcMain.handle('import:docxToMd', async (_e, srcDocxPath: string, destPath: string) => {
+  try {
+    // mammoth's TypeScript definitions ship without convertToMarkdown, but
+    // the function exists at runtime (exports.convertToMarkdown in lib/index.js).
+    const mammothAny = mammoth as unknown as {
+      convertToMarkdown: (input: { path: string }) => Promise<{ value: string; messages: { message: string }[] }>
+    }
+    const result = await mammothAny.convertToMarkdown({ path: srcDocxPath })
+    await writeFile(destPath, result.value, 'utf-8')
+    return { success: true, messages: result.messages.map((m) => m.message) }
+  } catch (err: unknown) {
+    return { success: false, error: err instanceof Error ? err.message : String(err) }
   }
 })
 
