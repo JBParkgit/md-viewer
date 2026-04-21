@@ -542,6 +542,25 @@ ipcMain.handle('shell:detectClaude', async () => {
   return detectClaude()
 })
 
+// Windows Terminal (wt.exe) handles Korean IME composition properly, unlike
+// legacy conhost which is what `start cmd` lands in. We auto-detect and prefer
+// it when present so Claude Code's prompt accepts 한글 input without dropped
+// or mis-placed characters.
+let detectedWT: boolean | null = null
+async function detectWindowsTerminal(): Promise<boolean> {
+  if (detectedWT !== null) return detectedWT
+  if (process.platform !== 'win32') { detectedWT = false; return false }
+  try {
+    await new Promise<void>((resolve, reject) => {
+      execFile('where', ['wt'], (err) => err ? reject(err) : resolve())
+    })
+    detectedWT = true
+  } catch {
+    detectedWT = false
+  }
+  return detectedWT
+}
+
 // Open a new terminal in `dirPath` and start `claude` (optionally with
 // --dangerously-skip-permissions). Must spawn a real OS terminal — Claude
 // Code requires a TTY, so we can't run it with plain child_process.exec.
@@ -549,7 +568,12 @@ ipcMain.handle('shell:openClaude', async (_e, dirPath: string, skipPerms: boolea
   const { exec } = require('child_process')
   const flag = skipPerms ? ' --dangerously-skip-permissions' : ''
   if (process.platform === 'win32') {
-    exec(`start cmd /k "cd /d "${dirPath}" && claude${flag}"`)
+    const hasWT = await detectWindowsTerminal()
+    if (hasWT) {
+      exec(`wt -d "${dirPath}" cmd /k "claude${flag}"`)
+    } else {
+      exec(`start cmd /k "cd /d "${dirPath}" && claude${flag}"`)
+    }
   } else if (process.platform === 'darwin') {
     const script = `tell application "Terminal" to do script "cd ${JSON.stringify(dirPath)}; claude${flag}"`
     exec(`osascript -e ${JSON.stringify(script)}`)

@@ -1,5 +1,13 @@
 # Changelog
 
+## 2.4.1 — 2026-04-21
+
+### 수정
+
+- **Claude Code 터미널에서 한글 입력 개선** — `wt.exe`(Windows Terminal)가 감지되면 자동으로 그것을 통해 실행. conhost(legacy cmd)의 한글 IME 조합 문제(커서 밀림·조합 유실·지연)가 해소됨. 없으면 기존 `start cmd`로 폴백.
+
+---
+
 ## 2.4.0 — 2026-04-21
 
 ### 추가 — Claude Code 실행
