@@ -270,7 +270,7 @@ function GitSection() {
 function AboutSection() {
   return (
     <>
-      <H>Docuflow v2.2</H>
+      <H>Docuflow v{__APP_VERSION__}</H>
       <P>Document Workspace & Editor</P>
       <div className="mt-2 p-3 rounded-md bg-gray-50 dark:bg-gray-900/60 border border-gray-200 dark:border-gray-700 text-[11px] text-gray-500 dark:text-gray-400 space-y-1">
         <div>Electron · React · TypeScript · CodeMirror 6 · Tailwind</div>

@@ -1,6 +1,7 @@
 import { defineConfig, externalizeDepsPlugin } from 'electron-vite'
 import react from '@vitejs/plugin-react'
 import { resolve } from 'path'
+import pkg from './package.json'
 
 export default defineConfig({
   main: {
@@ -38,6 +39,11 @@ export default defineConfig({
       alias: {
         '@': resolve(__dirname, 'src'),
       },
+    },
+    // Inline package.json version so UI elements (Toolbar, HelpModal, etc.)
+    // always match the shipped build without manual edits per release.
+    define: {
+      __APP_VERSION__: JSON.stringify(pkg.version),
     },
   },
 })
