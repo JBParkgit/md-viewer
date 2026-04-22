@@ -3,6 +3,7 @@ import { useAppStore, type Project } from '../stores/useAppStore'
 import FileTree from './FileTree'
 import type { FileNode } from '../types/electron'
 import { type MdTemplate, loadCustomTemplates, saveAsTemplate, getCategories } from '../utils/mdTemplates'
+import { alert, confirm } from '../utils/dialog'
 
 const PROJECT_COLORS = [
   { dot: 'bg-blue-500',    header: 'hover:bg-blue-50 dark:hover:bg-blue-900/20',    text: 'text-blue-700 dark:text-blue-300' },
@@ -669,7 +670,7 @@ export default function ProjectTree({ project, projectIndex, searchQuery, onOpen
               <button onClick={(e) => { e.stopPropagation(); loadNodes(); loadGitStatus() }} className="w-5 h-5 flex items-center justify-center rounded hover:bg-gray-200 dark:hover:bg-gray-600" title="새로고침">
                 <svg className="w-3 h-3 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" /></svg>
               </button>
-              <button onClick={(e) => { e.stopPropagation(); if (window.confirm(`"${project.name}" 프로젝트를 목록에서 제거하시겠습니까?`)) removeProject(project.id) }}
+              <button onClick={async (e) => { e.stopPropagation(); if (await confirm({ message: `"${project.name}" 프로젝트를 목록에서 제거하시겠습니까?`, variant: 'danger', confirmLabel: '제거' })) removeProject(project.id) }}
                 className="w-5 h-5 flex items-center justify-center rounded hover:bg-red-100 dark:hover:bg-red-900/30 hover:text-red-500" title="프로젝트 제거">
                 <svg className="w-3 h-3 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" /></svg>
               </button>
@@ -792,7 +793,7 @@ export default function ProjectTree({ project, projectIndex, searchQuery, onOpen
                         <button
                           onClick={async (e) => {
                             e.stopPropagation()
-                            if (!window.confirm(`"${t.name}" 템플릿을 삭제하시겠습니까?`)) return
+                            if (!(await confirm({ message: `"${t.name}" 템플릿을 삭제하시겠습니까?`, variant: 'danger', confirmLabel: '삭제' }))) return
                             await window.electronAPI.deleteFile(t.filePath!)
                             const updated = await loadCustomTemplates(project.path)
                             setAllTemplates(updated)
@@ -1201,7 +1202,7 @@ export default function ProjectTree({ project, projectIndex, searchQuery, onOpen
             )}
             <div className="my-1 border-t border-gray-100 dark:border-gray-700" />
             <button
-              onClick={() => { if (window.confirm(`"${project.name}" 프로젝트를 목록에서 제거하시겠습니까?`)) { removeProject(project.id) } setContextMenu(null) }}
+              onClick={async () => { setContextMenu(null); if (await confirm({ message: `"${project.name}" 프로젝트를 목록에서 제거하시겠습니까?`, variant: 'danger', confirmLabel: '제거' })) removeProject(project.id) }}
               className="w-full flex items-center gap-2 px-3 py-1.5 text-xs hover:bg-red-50 dark:hover:bg-red-900/20 text-red-600 dark:text-red-400 text-left"
             >
               <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">

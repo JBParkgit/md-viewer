@@ -9,6 +9,7 @@ import DocsPanel from './DocsPanel'
 import WorkflowPanel from './WorkflowPanel'
 import { useWorkflowStore } from '../stores/useWorkflowStore'
 import type { SearchResult } from '../types/electron'
+import { alert } from '../utils/dialog'
 
 interface Props {
   onOpenFile: (filePath: string, fileName: string) => void

@@ -2,6 +2,7 @@ import { useState, useEffect, useCallback } from 'react'
 import { useAppStore } from '../stores/useAppStore'
 import HelpModal from './HelpModal'
 import { exportMdToPdf, exportMdToDocx, importDocxAsMd } from '../utils/exportImport'
+import { alert } from '../utils/dialog'
 
 interface MenuItem {
   label?: string

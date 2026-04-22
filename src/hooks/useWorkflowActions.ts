@@ -10,6 +10,7 @@ import {
   type WorkflowMeta,
 } from '../utils/frontmatter'
 import { markRecentlySaved } from '../utils/recentSave'
+import { alert } from '../utils/dialog'
 
 export interface UseWorkflowActions {
   savingState: string | null

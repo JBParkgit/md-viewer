@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react'
+import { confirm } from '../utils/dialog'
 
 interface CommitEntry {
   hash: string
@@ -83,11 +84,15 @@ export default function FileHistoryModal({ filePath, projectPath, relativePath, 
     if (!selectedHash) return
     const sel = commits.find(c => c.hash === selectedHash)
     if (!sel) return
-    if (!window.confirm(
-      `"${fileName}"을(를) 다음 시점으로 되돌리시겠습니까?\n\n` +
-      `${sel.hash} (${sel.date}) ${sel.author}\n${sel.subject}\n\n` +
-      `현재 워킹 디렉토리의 내용이 덮어씌워집니다. 이 변경은 자동으로 스테이징되며, 새 커밋을 만들면 영구히 기록됩니다.`
-    )) return
+    if (!(await confirm({
+      title: '이전 커밋으로 되돌리기',
+      message:
+        `"${fileName}"을(를) 다음 시점으로 되돌리시겠습니까?\n\n` +
+        `${sel.hash} (${sel.date}) ${sel.author}\n${sel.subject}\n\n` +
+        `현재 워킹 디렉토리의 내용이 덮어씌워집니다. 이 변경은 자동으로 스테이징되며, 새 커밋을 만들면 영구히 기록됩니다.`,
+      variant: 'danger',
+      confirmLabel: '되돌리기',
+    }))) return
     setActionState('되돌리는 중...')
     const res = await window.electronAPI.gitCheckoutFileAtCommit(projectPath, selectedHash, relativePath)
     if (res.success) {

@@ -5,6 +5,7 @@ import { WORKFLOW_STATUS_ICONS, WORKFLOW_STATUS_COLORS } from '../utils/frontmat
 import FileHistoryModal from './FileHistoryModal'
 import { exportMdToPdf, exportMdToDocx, importDocxAsMd } from '../utils/exportImport'
 import { getFileGroup, FileTypeIcon } from '../utils/fileType'
+import { alert, confirm } from '../utils/dialog'
 import type { FileNode } from '../types/electron'
 import type { GitStatusMap } from './ProjectTree'
 
@@ -145,7 +146,7 @@ function FileRow({ node, onOpenFile, onOpenFilePinned, searchQuery, depth, proje
 
   const isSelected = selection?.selectedPaths.has(node.path) ?? false
 
-  const handleKeyDown = (e: React.KeyboardEvent) => {
+  const handleKeyDown = async (e: React.KeyboardEvent) => {
     if (e.key === 'Delete' && !isRenaming) {
       e.preventDefault()
       const targets = selection && selection.selectedPaths.size > 1 && isSelected
@@ -154,7 +155,7 @@ function FileRow({ node, onOpenFile, onOpenFilePinned, searchQuery, depth, proje
       const msg = targets.length > 1
         ? `${targets.length}개 항목을 휴지통으로 이동하시겠습니까?`
         : `"${node.name}" ${node.type === 'directory' ? '폴더' : '파일'}을 휴지통으로 이동하시겠습니까?`
-      if (!window.confirm(msg)) return
+      if (!(await confirm({ message: msg, variant: 'danger', confirmLabel: '이동' }))) return
       targets.forEach(p => {
         window.electronAPI.deleteFile(p).then(result => {
           if (result.success) {
@@ -431,7 +432,7 @@ function FileRow({ node, onOpenFile, onOpenFilePinned, searchQuery, depth, proje
               <button
                 onClick={async () => {
                   setContextMenu(null)
-                  if (!window.confirm(`"${displayNode.name}" 폴더를 휴지통으로 이동하시겠습니까?`)) return
+                  if (!(await confirm({ message: `"${displayNode.name}" 폴더를 휴지통으로 이동하시겠습니까?`, variant: 'danger', confirmLabel: '이동' }))) return
                   await window.electronAPI.deleteFile(displayNode.path)
                 }}
                 className="w-full flex items-center gap-2 px-3 py-1.5 text-xs hover:bg-red-50 dark:hover:bg-red-900/20 text-red-600 dark:text-red-400 text-left"
@@ -729,7 +730,7 @@ function FileRow({ node, onOpenFile, onOpenFilePinned, searchQuery, depth, proje
                     <button
                       onClick={async () => {
                         setContextMenu(null)
-                        if (!window.confirm(`"${node.name}" 파일의 변경사항을 취소하시겠습니까?`)) return
+                        if (!(await confirm({ message: `"${node.name}" 파일의 변경사항을 취소하시겠습니까?`, variant: 'danger', confirmLabel: '취소' }))) return
                         const res = await window.electronAPI.gitDiscard(projectPath, rel)
                         if (!res.success) {
                           alert(res.error || '변경 취소 실패')
@@ -770,7 +771,7 @@ function FileRow({ node, onOpenFile, onOpenFilePinned, searchQuery, depth, proje
             <button
               onClick={async () => {
                 setContextMenu(null)
-                if (!window.confirm(`"${node.name}" 파일을 휴지통으로 이동하시겠습니까?`)) return
+                if (!(await confirm({ message: `"${node.name}" 파일을 휴지통으로 이동하시겠습니까?`, variant: 'danger', confirmLabel: '이동' }))) return
                 const result = await window.electronAPI.deleteFile(node.path)
                 if (result.success) {
                   // Close tab if open

@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from 'react'
 import { useAppStore } from '../stores/useAppStore'
 import { useWorkflowStore } from '../stores/useWorkflowStore'
+import { alert, prompt } from '../utils/dialog'
 import {
   parseWorkflow,
   updateFrontmatterWorkflow,
@@ -119,7 +120,7 @@ export default function WorkflowDocPanel({ content, filePath, projectPath }: Pro
       alert('승인자를 최소 1명 지정하세요.')
       return
     }
-    const note = (window.prompt('승인자에게 보낼 요청 메시지를 입력하세요 (선택):', '') ?? '').trim()
+    const note = ((await prompt({ title: '승인 요청', message: '승인자에게 보낼 요청 메시지를 입력하세요 (선택):', placeholder: '메시지' })) ?? '').trim()
     const today = new Date().toISOString().slice(0, 10)
     const next: WorkflowMeta = {
       ...meta,

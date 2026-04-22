@@ -9,6 +9,8 @@ import KanbanBoard from './components/KanbanBoard'
 import CalendarView from './components/CalendarView'
 import WorkflowBoard from './components/WorkflowBoard'
 import PullResultModal from './components/PullResultModal'
+import DialogHost from './components/DialogHost'
+import { confirm } from './utils/dialog'
 import { isRecentlySaved } from './utils/recentSave'
 
 // Allow mdTemplates to resolve the current user (for {{author}}) without a circular import
@@ -193,11 +195,16 @@ export default function App() {
 
   // ── Warn before closing with unsaved changes ─────────────────────────────
   useEffect(() => {
-    const unsub = window.electronAPI.onBeforeClose(() => {
+    const unsub = window.electronAPI.onBeforeClose(async () => {
       const s = useAppStore.getState()
       const hasDirty = s.tabs.some(t => t.isDirty) || s.rightTabs.some(t => t.isDirty)
       if (hasDirty) {
-        const ok = window.confirm('저장하지 않은 문서가 있습니다. 저장하지 않고 종료하시겠습니까?')
+        const ok = await confirm({
+          title: '저장하지 않은 문서가 있습니다',
+          message: '저장하지 않고 종료하시겠습니까?',
+          confirmLabel: '종료',
+          variant: 'danger',
+        })
         window.electronAPI.confirmClose(ok)
       } else {
         window.electronAPI.confirmClose(true)
@@ -339,6 +346,7 @@ export default function App() {
     <div className="flex flex-col h-full bg-white dark:bg-gray-900 text-gray-900 dark:text-gray-100">
       <Toolbar />
       <PullResultModal />
+      <DialogHost />
       <div className="flex flex-1 overflow-hidden">
         <Sidebar
           onOpenFile={(p, n) => openFile(p, n, true)}

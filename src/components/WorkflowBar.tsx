@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from 'react'
 import type { Tab } from '../stores/useAppStore'
 import { useAppStore } from '../stores/useAppStore'
+import { alert, confirm } from '../utils/dialog'
 import {
   parseWorkflow,
   WORKFLOW_STATUS_ICONS,
@@ -425,7 +426,7 @@ export default function WorkflowBar({ tab, projectPath }: Props) {
                   `• 이력 ${meta.history.length}건이 함께 사라집니다\n` +
                   `• 본문과 태그 등 다른 내용은 그대로 유지됩니다\n\n` +
                   `계속하시겠습니까?`
-                if (!window.confirm(summary)) return
+                if (!(await confirm({ message: summary, variant: 'danger', confirmLabel: '제거' }))) return
                 await actions.clearWorkflow()
               }}
               className="px-2 py-0.5 rounded text-[10px] text-red-600 dark:text-red-400 border border-red-200 dark:border-red-800/60 hover:bg-red-50 dark:hover:bg-red-900/20"

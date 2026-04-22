@@ -1,5 +1,22 @@
 # Changelog
 
+## 2.9.0 — 2026-04-23
+
+주요 주제: **네이티브 다이얼로그 제거** — Alt+Tab을 눌러야 입력이 복구되던 고질적 먹통 버그의 근본 원인을 제거.
+
+### 수정 — 입력 먹통 (freeze) 버그 근본 해결
+
+- **원인 확정** — Windows + Electron + 커스텀 `titleBarOverlay` 조합에서 `window.confirm` / `window.prompt` / `window.alert`(네이티브 다이얼로그)가 닫힌 뒤 BrowserWindow가 OS 레벨에서 "비활성" 포커스 상태로 고착. 렌더러의 키 입력이 먹혀 조합 중인 한글이 사라지거나 타이핑이 무시됨. Alt+Tab / 창 리사이즈로만 복구.
+- **해결** — 앱 전체에서 네이티브 다이얼로그 호출을 제거하고 인앱 모달로 교체. 새로운 imperative API (`alert()` / `confirm()` / `prompt()`)는 Promise를 반환하고 BrowserWindow focus 상태를 건드리지 않음 → 포커스 고착이 원천 차단.
+- **대상** — `window.confirm` 15곳, `window.prompt` 1곳, `alert` 27곳 (43 콜사이트).
+
+### 추가
+
+- **`src/utils/dialog.ts`** — `alert/confirm/prompt` imperative API. 문자열 단축 형 또는 옵션 객체로 호출 가능 (`variant: 'danger'`, 커스텀 라벨, 제목 등).
+- **`src/components/DialogHost.tsx`** — App 루트에 상주하는 모달 호스트. ESC로 취소, Enter로 확인, 배경 클릭으로 닫힘, 다크모드 대응, 큐 기반으로 다이얼로그 중첩 안전 처리.
+
+---
+
 ## 2.8.1 — 2026-04-23
 
 ### 변경

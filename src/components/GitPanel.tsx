@@ -1,5 +1,6 @@
 import { useState, useEffect, useCallback } from 'react'
 import { useAppStore } from '../stores/useAppStore'
+import { confirm } from '../utils/dialog'
 
 interface GitFileEntry {
   status: string      // M, A, D, ?, etc.
@@ -229,7 +230,7 @@ export default function GitPanel() {
 
   const handleDiscard = async (file: string) => {
     if (!selectedProjectPath) return
-    if (!window.confirm(`"${file}" 파일의 변경사항을 취소하시겠습니까?`)) return
+    if (!(await confirm({ message: `"${file}" 파일의 변경사항을 취소하시겠습니까?`, variant: 'danger', confirmLabel: '취소' }))) return
     await window.electronAPI.gitDiscard(selectedProjectPath, file)
     refresh()
     notifyGitChanged()
@@ -617,7 +618,7 @@ export default function GitPanel() {
                     <button
                       onClick={async () => {
                         if (!selectedProjectPath) return
-                        if (!window.confirm(`"${log.hash}" 커밋을 되돌리시겠습니까?\n(되돌리는 새 커밋이 생성됩니다)`)) return
+                        if (!(await confirm({ message: `"${log.hash}" 커밋을 되돌리시겠습니까?\n(되돌리는 새 커밋이 생성됩니다)`, confirmLabel: '되돌리기' }))) return
                         const res = await window.electronAPI.gitRevert(selectedProjectPath, log.hash)
                         if (res.success) {
                           showAction('커밋이 되돌려졌습니다.', 'success')
