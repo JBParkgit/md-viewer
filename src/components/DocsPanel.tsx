@@ -16,6 +16,13 @@ interface MdFile {
 
 type SortBy = 'name' | 'path' | 'recent'
 
+const SORT_LABELS: Record<SortBy, string> = {
+  recent: '최신순',
+  name: '이름순',
+  path: '경로순',
+}
+const SORT_ORDER: SortBy[] = ['recent', 'name', 'path']
+
 function formatRelativeTime(mtime: number): string {
   if (!mtime) return ''
   const diffMs = Date.now() - mtime
@@ -40,7 +47,9 @@ export default function DocsPanel({ onOpenFile }: Props) {
   const [files, setFiles] = useState<MdFile[]>([])
   const [search, setSearch] = useState('')
   const [loading, setLoading] = useState(false)
-  const [sortBy, setSortByState] = useState<SortBy>('path')
+  const [sortBy, setSortByState] = useState<SortBy>('recent')
+  const [sortMenuOpen, setSortMenuOpen] = useState(false)
+  const sortMenuRef = useRef<HTMLDivElement>(null)
   const [showAll, setShowAllState] = useState(false)
   const [selectedProject, setSelectedProject] = useState<string | null>(null)
   const [ignoreDirs, setIgnoreDirs] = useState<string[]>(DEFAULT_IGNORE)
@@ -65,7 +74,20 @@ export default function DocsPanel({ onOpenFile }: Props) {
   const setSortBy = (v: SortBy) => {
     setSortByState(v)
     window.electronAPI.storeSet('docsSortBy', v)
+    setSortMenuOpen(false)
   }
+
+  // Close the sort dropdown on outside click.
+  useEffect(() => {
+    if (!sortMenuOpen) return
+    const onDown = (e: MouseEvent) => {
+      if (sortMenuRef.current && !sortMenuRef.current.contains(e.target as Node)) {
+        setSortMenuOpen(false)
+      }
+    }
+    document.addEventListener('mousedown', onDown)
+    return () => document.removeEventListener('mousedown', onDown)
+  }, [sortMenuOpen])
 
   const setShowAll = (v: boolean) => {
     setShowAllState(v)
@@ -273,30 +295,33 @@ export default function DocsPanel({ onOpenFile }: Props) {
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
               </svg>
             </button>
-            <button
-              onClick={() => setSortBy('name')}
-              className={`text-[10px] px-1.5 py-0.5 rounded transition-colors ${
-                sortBy === 'name' ? 'bg-blue-100 dark:bg-blue-900/40 text-blue-600' : 'text-gray-400 hover:text-gray-600'
-              }`}
-            >
-              이름순
-            </button>
-            <button
-              onClick={() => setSortBy('path')}
-              className={`text-[10px] px-1.5 py-0.5 rounded transition-colors ${
-                sortBy === 'path' ? 'bg-blue-100 dark:bg-blue-900/40 text-blue-600' : 'text-gray-400 hover:text-gray-600'
-              }`}
-            >
-              경로순
-            </button>
-            <button
-              onClick={() => setSortBy('recent')}
-              className={`text-[10px] px-1.5 py-0.5 rounded transition-colors ${
-                sortBy === 'recent' ? 'bg-blue-100 dark:bg-blue-900/40 text-blue-600' : 'text-gray-400 hover:text-gray-600'
-              }`}
-            >
-              최신순
-            </button>
+            <div ref={sortMenuRef} className="relative">
+              <button
+                onClick={() => setSortMenuOpen(o => !o)}
+                className="flex items-center gap-0.5 text-[10px] px-1.5 py-0.5 rounded bg-blue-100 dark:bg-blue-900/40 text-blue-600 hover:bg-blue-200 dark:hover:bg-blue-900/60 transition-colors"
+                title="정렬 기준"
+              >
+                {SORT_LABELS[sortBy]}
+                <svg className="w-2.5 h-2.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M19 9l-7 7-7-7" />
+                </svg>
+              </button>
+              {sortMenuOpen && (
+                <div className="absolute right-0 top-full mt-1 z-30 min-w-[90px] bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-600 rounded-md shadow-lg py-1">
+                  {SORT_ORDER.map(opt => (
+                    <button
+                      key={opt}
+                      onClick={() => setSortBy(opt)}
+                      className={`w-full text-left text-xs px-3 py-1.5 hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors ${
+                        sortBy === opt ? 'text-blue-600 font-medium' : 'text-gray-700 dark:text-gray-200'
+                      }`}
+                    >
+                      {SORT_LABELS[opt]}
+                    </button>
+                  ))}
+                </div>
+              )}
+            </div>
           </div>
         </div>
       </div>
