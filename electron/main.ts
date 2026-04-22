@@ -277,6 +277,7 @@ interface FileNode {
   path: string
   type: 'file' | 'directory'
   children?: FileNode[]
+  mtime?: number
 }
 
 async function readDirRecursive(dirPath: string, depth = 0): Promise<FileNode[]> {
@@ -295,7 +296,12 @@ async function readDirRecursive(dirPath: string, depth = 0): Promise<FileNode[]>
           children: await readDirRecursive(fullPath, depth + 1),
         })
       } else if (entry.isFile()) {
-        nodes.push({ name: entry.name, path: fullPath, type: 'file' })
+        // mtime powers the "recently changed" dot badge for non-Git folders.
+        // statSync here is sync-per-entry; for typical project sizes the cost
+        // is negligible compared to the readdir latency itself.
+        let mtime: number | undefined
+        try { mtime = statSync(fullPath).mtimeMs } catch { /* ignore */ }
+        nodes.push({ name: entry.name, path: fullPath, type: 'file', mtime })
       }
     }
     // Sort: directories first (dot-dirs last among dirs), then files (dot-files last)
@@ -422,6 +428,8 @@ ipcMain.handle('fs:unwatchFile', (_e, filePath: string) => {
 const dirWatchers = new Map<string, ReturnType<typeof chokidar.watch>>()
 const dirTimers = new Map<string, ReturnType<typeof setTimeout>>()
 
+const dirChangedPaths = new Map<string, Set<string>>()
+
 ipcMain.handle('fs:watchDir', (_e, dirPath: string) => {
   if (dirWatchers.has(dirPath)) return
   const watcher = chokidar.watch(dirPath, {
@@ -430,16 +438,32 @@ ipcMain.handle('fs:watchDir', (_e, dirPath: string) => {
     depth: 8,
     ignored: /(^|[/\\])\../,   // 숨김 파일 무시
   })
-  const notify = () => {
+  const notify = (changedPath?: string) => {
+    // Accumulate the set of changed paths between debounced flushes so the
+    // renderer can highlight exactly what moved (Phase 3 flash animation).
+    if (changedPath) {
+      let set = dirChangedPaths.get(dirPath)
+      if (!set) { set = new Set(); dirChangedPaths.set(dirPath, set) }
+      // Also ignore events that originated from our own write (edit-in-app).
+      if (!consumeSelfWrite(changedPath)) set.add(changedPath)
+    }
     // 연속 변경을 300ms 디바운스로 묶어서 한 번만 알림
     const existing = dirTimers.get(dirPath)
     if (existing) clearTimeout(existing)
     dirTimers.set(dirPath, setTimeout(() => {
-      mainWindow?.webContents.send('fs:dirChanged', dirPath)
+      const set = dirChangedPaths.get(dirPath)
+      const paths = set ? Array.from(set) : []
+      dirChangedPaths.delete(dirPath)
+      mainWindow?.webContents.send('fs:dirChanged', dirPath, paths)
       dirTimers.delete(dirPath)
     }, 300))
   }
-  watcher.on('add', notify).on('unlink', notify).on('addDir', notify).on('unlinkDir', notify)
+  watcher
+    .on('add', notify)
+    .on('change', notify)
+    .on('unlink', notify)
+    .on('addDir', notify)
+    .on('unlinkDir', notify)
   dirWatchers.set(dirPath, watcher)
 })
 
@@ -448,6 +472,57 @@ ipcMain.handle('fs:unwatchDir', (_e, dirPath: string) => {
   if (existing) { clearTimeout(existing); dirTimers.delete(dirPath) }
   const watcher = dirWatchers.get(dirPath)
   if (watcher) { watcher.close(); dirWatchers.delete(dirPath) }
+})
+
+// ── IPC: Watch Git metadata ─────────────────────────────────────────────────
+// The directory watcher above ignores dotfiles, so external `git add`/`git commit`
+// (which only touches `.git/index`, `.git/HEAD`, refs) are invisible to it.
+// This dedicated watcher observes those files so the UI can refresh Git status
+// even when the working tree itself hasn't changed.
+const gitWatchers = new Map<string, ReturnType<typeof chokidar.watch>>()
+const gitTimers = new Map<string, ReturnType<typeof setTimeout>>()
+
+ipcMain.handle('fs:watchGit', (_e, projectPath: string) => {
+  if (gitWatchers.has(projectPath)) return
+  const gitDir = join(projectPath, '.git')
+  if (!existsSync(gitDir)) return
+  const watcher = chokidar.watch(
+    [
+      join(gitDir, 'index'),
+      join(gitDir, 'HEAD'),
+      join(gitDir, 'refs', 'heads'),
+      join(gitDir, 'MERGE_HEAD'),
+      join(gitDir, 'ORIG_HEAD'),
+    ],
+    {
+      ignoreInitial: true,
+      usePolling: false,
+      // chokidar by default ignores dotfiles via our other watchers, but for this
+      // one we are EXPLICITLY inside `.git/`, so we must not re-apply that filter.
+    }
+  )
+  const notify = () => {
+    const existing = gitTimers.get(projectPath)
+    if (existing) clearTimeout(existing)
+    gitTimers.set(projectPath, setTimeout(() => {
+      mainWindow?.webContents.send('fs:gitMetaChanged', projectPath)
+      gitTimers.delete(projectPath)
+    }, 300))
+  }
+  watcher
+    .on('add', notify)
+    .on('change', notify)
+    .on('unlink', notify)
+    .on('addDir', notify)
+    .on('unlinkDir', notify)
+  gitWatchers.set(projectPath, watcher)
+})
+
+ipcMain.handle('fs:unwatchGit', (_e, projectPath: string) => {
+  const existing = gitTimers.get(projectPath)
+  if (existing) { clearTimeout(existing); gitTimers.delete(projectPath) }
+  const watcher = gitWatchers.get(projectPath)
+  if (watcher) { watcher.close(); gitWatchers.delete(projectPath) }
 })
 
 // ── IPC: Read File Binary ────────────────────────────────────────────────────

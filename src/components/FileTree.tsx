@@ -46,6 +46,19 @@ interface FileRowProps {
   projectPath?: string
   selection?: SelectionProps
   flatPaths?: string[]
+  recentlyChangedPaths?: Set<string>
+  now?: number
+}
+
+// mtime-based "recently modified" dot for folders without Git. Shown only when
+// there's no Git badge to avoid clutter. Dot fades out after RECENT_WINDOW_MS.
+const RECENT_WINDOW_MS = 60_000
+function getRecentDot(node: FileNode, now: number | undefined): { title: string } | null {
+  if (!now || !node.mtime) return null
+  const age = now - node.mtime
+  if (age < 0 || age > RECENT_WINDOW_MS) return null
+  const seconds = Math.max(1, Math.round(age / 1000))
+  return { title: `방금 수정됨 (${seconds}초 전)` }
 }
 
 function getDirGitStatus(dirPath: string, gitStatusMap?: GitStatusMap, projectPath?: string): { modified: number; added: number; deleted: number } | null {
@@ -86,7 +99,7 @@ function getGitDot(node: FileNode, gitStatusMap?: GitStatusMap, projectPath?: st
   return { color: 'text-gray-500', letter: st, title: st }
 }
 
-function FileRow({ node, onOpenFile, onOpenFilePinned, searchQuery, depth, projectId, openDirs, toggleDir, gitStatusMap, projectPath, selection, flatPaths }: FileRowProps) {
+function FileRow({ node, onOpenFile, onOpenFilePinned, searchQuery, depth, projectId, openDirs, toggleDir, gitStatusMap, projectPath, selection, flatPaths, recentlyChangedPaths, now }: FileRowProps) {
   const controlled = openDirs !== undefined && toggleDir !== undefined
   const [localOpen, setLocalOpen] = useState(!!searchQuery)
   const open = controlled ? openDirs.has(node.path) : localOpen
@@ -380,6 +393,8 @@ function FileRow({ node, onOpenFile, onOpenFilePinned, searchQuery, depth, proje
                 projectPath={projectPath}
                 selection={selection}
                 flatPaths={flatPaths}
+                recentlyChangedPaths={recentlyChangedPaths}
+                now={now}
               />
             ))}
           </div>
@@ -447,6 +462,8 @@ function FileRow({ node, onOpenFile, onOpenFilePinned, searchQuery, depth, proje
     onOpenFilePinned(node.path, node.name)
   }
 
+  const isRecentlyChanged = recentlyChangedPaths?.has(node.path) ?? false
+
   return (
     <>
       <div
@@ -468,6 +485,8 @@ function FileRow({ node, onOpenFile, onOpenFilePinned, searchQuery, depth, proje
         onKeyDown={handleKeyDown}
         tabIndex={0}
         className={`flex items-center gap-1.5 py-1 rounded text-xs group cursor-pointer focus:outline-none focus:ring-1 focus:ring-inset focus:ring-blue-400 ${
+          isRecentlyChanged ? 'md-flash-change' : ''
+        } ${
           isDragOver
             ? 'bg-blue-50 dark:bg-blue-900/30 outline outline-1 outline-blue-400 [&>*]:pointer-events-none'
             : isActiveFile
@@ -513,8 +532,16 @@ function FileRow({ node, onOpenFile, onOpenFilePinned, searchQuery, depth, proje
         )}
         {(() => {
           const dot = getGitDot(node, gitStatusMap, projectPath)
-          if (!dot) return null
-          return <span className={`text-[10px] font-bold flex-shrink-0 ${dot.color}`} title={dot.title}>{dot.letter}</span>
+          if (dot) {
+            return <span className={`text-[10px] font-bold flex-shrink-0 ${dot.color}`} title={dot.title}>{dot.letter}</span>
+          }
+          // Only show mtime dot when there's no Git badge (non-Git folders or
+          // files that are in sync with HEAD but were just touched externally).
+          const recent = getRecentDot(node, now)
+          if (recent) {
+            return <span className="w-1.5 h-1.5 rounded-full bg-gray-400 dark:bg-gray-500 flex-shrink-0" title={recent.title} />
+          }
+          return null
         })()}
       </div>
 
@@ -798,6 +825,8 @@ interface Props {
   gitStatusMap?: GitStatusMap
   projectPath?: string
   selection?: SelectionProps
+  recentlyChangedPaths?: Set<string>
+  now?: number
 }
 
 function collectPaths(nodes: FileNode[]): string[] {
@@ -809,7 +838,7 @@ function collectPaths(nodes: FileNode[]): string[] {
   return result
 }
 
-export default function FileTree({ nodes, onOpenFile, onOpenFilePinned, searchQuery, depth = 0, projectId, openDirs, toggleDir, gitStatusMap, projectPath, selection }: Props) {
+export default function FileTree({ nodes, onOpenFile, onOpenFilePinned, searchQuery, depth = 0, projectId, openDirs, toggleDir, gitStatusMap, projectPath, selection, recentlyChangedPaths, now }: Props) {
   const flatPaths = useMemo(() => collectPaths(nodes), [nodes])
   if (nodes.length === 0) {
     return (
@@ -835,6 +864,8 @@ export default function FileTree({ nodes, onOpenFile, onOpenFilePinned, searchQu
           projectPath={projectPath}
           selection={selection}
           flatPaths={flatPaths}
+          recentlyChangedPaths={recentlyChangedPaths}
+          now={now}
         />
       ))}
     </div>

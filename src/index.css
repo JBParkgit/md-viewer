@@ -553,6 +553,22 @@ html, body, #root {
   outline: 2px dashed #3b82f6;
 }
 
+/* ── File-tree flash on external change ───────────────────────────────────── */
+@keyframes mdFlashChange {
+  0%   { background-color: rgba(250, 204, 21, 0.55); }
+  100% { background-color: rgba(250, 204, 21, 0); }
+}
+.md-flash-change {
+  animation: mdFlashChange 3s ease-out 1;
+}
+.dark .md-flash-change {
+  animation-name: mdFlashChangeDark;
+}
+@keyframes mdFlashChangeDark {
+  0%   { background-color: rgba(202, 138, 4, 0.55); }
+  100% { background-color: rgba(202, 138, 4, 0); }
+}
+
 /* ── Image viewer checker background ─────────────────────────────────────── */
 .bg-checker {
   background-color: #e5e7eb;

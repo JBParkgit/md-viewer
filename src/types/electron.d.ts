@@ -23,6 +23,7 @@ export interface FileNode {
   path: string
   type: 'file' | 'directory'
   children?: FileNode[]
+  mtime?: number
 }
 
 export interface SearchResult {
@@ -46,7 +47,10 @@ export interface ElectronAPI {
   onFileChanged: (cb: (filePath: string) => void) => () => void
   watchDir: (path: string) => Promise<void>
   unwatchDir: (path: string) => Promise<void>
-  onDirChanged: (cb: (dirPath: string) => void) => () => void
+  onDirChanged: (cb: (dirPath: string, changedPaths: string[]) => void) => () => void
+  watchGit: (projectPath: string) => Promise<void>
+  unwatchGit: (projectPath: string) => Promise<void>
+  onGitMetaChanged: (cb: (projectPath: string) => void) => () => void
   stat: (path: string) => Promise<{ size: number; mtime: string } | null>
   copyImageToDir: (srcPath: string, destDir: string) => Promise<{ success: boolean; fileName?: string; error?: string }>
   listImages: (dirPath: string) => Promise<string[]>

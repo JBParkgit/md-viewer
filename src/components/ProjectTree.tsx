@@ -41,6 +41,18 @@ export default function ProjectTree({ project, projectIndex, searchQuery, onOpen
   const [remoteUrl, setRemoteUrl] = useState('')
   const [isPulling, setIsPulling] = useState(false)
 
+  // Paths flashing after an external change (Phase 3). Cleared after 3s each.
+  const [recentlyChangedPaths, setRecentlyChangedPaths] = useState<Set<string>>(new Set())
+  // Monotonic clock used by FileTree to age-out mtime badges (Phase 2).
+  // Ticked every 5s while expanded; one bump is enough for 60s-window badges
+  // because the window is much larger than the tick interval.
+  const [now, setNow] = useState(() => Date.now())
+  useEffect(() => {
+    if (project.collapsed) return
+    const id = setInterval(() => setNow(Date.now()), 5000)
+    return () => clearInterval(id)
+  }, [project.collapsed])
+
   // Multi-selection
   const [selectedPaths, setSelectedPaths] = useState<Set<string>>(new Set())
   const [lastClickedPath, setLastClickedPath] = useState<string | null>(null)
@@ -147,24 +159,68 @@ export default function ProjectTree({ project, projectIndex, searchQuery, onOpen
   useEffect(() => {
     if (project.collapsed) {
       window.electronAPI.unwatchDir(project.path)
+      window.electronAPI.unwatchGit(project.path)
       return
     }
     loadNodes()
     window.electronAPI.watchDir(project.path)
+    // Observe `.git/` so external `git add` / `git commit` / branch switches
+    // refresh the status badges even though those events don't touch the tree.
+    window.electronAPI.watchGit(project.path)
     return () => {
       window.electronAPI.unwatchDir(project.path)
+      window.electronAPI.unwatchGit(project.path)
     }
   }, [project.path, project.collapsed])
 
   // Reload tree when directory changes on disk
   useEffect(() => {
-    const unsub = window.electronAPI.onDirChanged((changedPath) => {
+    const unsub = window.electronAPI.onDirChanged((changedPath, changedPaths) => {
       if (!project.collapsed && changedPath === project.path) {
         loadNodes()
+        loadGitStatus()
+        if (changedPaths && changedPaths.length > 0) {
+          setRecentlyChangedPaths(prev => {
+            const next = new Set(prev)
+            for (const p of changedPaths) next.add(p)
+            return next
+          })
+          // Remove each path from the flash set after the animation duration.
+          // Re-adding during the window is fine — CSS animation doesn't restart
+          // without a class toggle, but a fresh readDir may replace the node
+          // object identity which is close enough to restart the animation.
+          for (const p of changedPaths) {
+            setTimeout(() => {
+              setRecentlyChangedPaths(prev => {
+                if (!prev.has(p)) return prev
+                const next = new Set(prev)
+                next.delete(p)
+                return next
+              })
+            }, 3000)
+          }
+        }
+      }
+    })
+    return unsub
+  }, [project.path, project.collapsed])
+
+  // Refresh git status when .git metadata changes (e.g. external `git add`)
+  useEffect(() => {
+    const unsub = window.electronAPI.onGitMetaChanged((changedPath) => {
+      if (!project.collapsed && changedPath === project.path) {
         loadGitStatus()
       }
     })
     return unsub
+  }, [project.path, project.collapsed])
+
+  // Safety-net polling: chokidar on Windows occasionally misses `.git/index`
+  // rewrites (atomic replace), so poll every 3s while expanded.
+  useEffect(() => {
+    if (project.collapsed) return
+    const id = setInterval(() => { loadGitStatus() }, 3000)
+    return () => clearInterval(id)
   }, [project.path, project.collapsed])
 
   // Load git status when expanded
@@ -965,7 +1021,7 @@ export default function ProjectTree({ project, projectIndex, searchQuery, onOpen
           {loading ? (
             <div className="px-6 py-2 text-xs text-gray-400">불러오는 중...</div>
           ) : (
-            <FileTree nodes={nodes} onOpenFile={onOpenFile} onOpenFilePinned={onOpenFilePinned} searchQuery={searchQuery} depth={0} projectId={project.id} openDirs={openDirs} toggleDir={toggleDir} gitStatusMap={gitStatusMap} projectPath={project.path} selection={selection} />
+            <FileTree nodes={nodes} onOpenFile={onOpenFile} onOpenFilePinned={onOpenFilePinned} searchQuery={searchQuery} depth={0} projectId={project.id} openDirs={openDirs} toggleDir={toggleDir} gitStatusMap={gitStatusMap} projectPath={project.path} selection={selection} recentlyChangedPaths={recentlyChangedPaths} now={now} />
           )}
         </div>
       )}

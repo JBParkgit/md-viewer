@@ -168,10 +168,24 @@ export default function App() {
   }, [projects])
 
   // ── File change watcher ───────────────────────────────────────────────────
-  // Ignore file-change events for files recently saved by the app itself
+  // Ignore file-change events for files recently saved by the app itself.
+  // If no user edit is pending, reload silently so external edits (e.g. Claude
+  // Code, git pull) appear instantly. If the tab has unsaved changes, keep the
+  // existing "externally changed" banner so the user chooses what to keep.
   useEffect(() => {
-    const unsub = window.electronAPI.onFileChanged((filePath) => {
+    const unsub = window.electronAPI.onFileChanged(async (filePath) => {
       if (isRecentlySaved(filePath)) return
+      const s = useAppStore.getState()
+      const matches = [...s.tabs, ...s.rightTabs].filter(t => t.filePath === filePath)
+      if (matches.length === 0) return
+      const hasDirty = matches.some(t => t.isDirty)
+      if (!hasDirty) {
+        const res = await window.electronAPI.readFile(filePath)
+        if (res.success && res.content !== undefined) {
+          for (const t of matches) useAppStore.getState().markTabSaved(t.id, res.content)
+        }
+        return
+      }
       setTabFileChanged(filePath, true)
     })
     return unsub

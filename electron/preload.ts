@@ -23,10 +23,18 @@ contextBridge.exposeInMainWorld('electronAPI', {
   },
   watchDir: (path: string) => ipcRenderer.invoke('fs:watchDir', path),
   unwatchDir: (path: string) => ipcRenderer.invoke('fs:unwatchDir', path),
-  onDirChanged: (cb: (dirPath: string) => void) => {
-    const handler = (_e: Electron.IpcRendererEvent, dirPath: string) => cb(dirPath)
+  onDirChanged: (cb: (dirPath: string, changedPaths: string[]) => void) => {
+    const handler = (_e: Electron.IpcRendererEvent, dirPath: string, changedPaths: string[] = []) =>
+      cb(dirPath, changedPaths)
     ipcRenderer.on('fs:dirChanged', handler)
     return () => ipcRenderer.removeListener('fs:dirChanged', handler)
+  },
+  watchGit: (projectPath: string) => ipcRenderer.invoke('fs:watchGit', projectPath),
+  unwatchGit: (projectPath: string) => ipcRenderer.invoke('fs:unwatchGit', projectPath),
+  onGitMetaChanged: (cb: (projectPath: string) => void) => {
+    const handler = (_e: Electron.IpcRendererEvent, projectPath: string) => cb(projectPath)
+    ipcRenderer.on('fs:gitMetaChanged', handler)
+    return () => ipcRenderer.removeListener('fs:gitMetaChanged', handler)
   },
   stat: (path: string) => ipcRenderer.invoke('fs:stat', path),
   copyImageToDir: (srcPath: string, destDir: string) => ipcRenderer.invoke('fs:copyImageToDir', srcPath, destDir),
