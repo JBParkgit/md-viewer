@@ -11,6 +11,26 @@ interface MdFile {
   rel: string        // relative path from project root
   projectName: string
   projectPath: string
+  mtime: number
+}
+
+type SortBy = 'name' | 'path' | 'recent'
+
+function formatRelativeTime(mtime: number): string {
+  if (!mtime) return ''
+  const diffMs = Date.now() - mtime
+  if (diffMs < 0) return '방금'
+  const sec = Math.floor(diffMs / 1000)
+  if (sec < 60) return '방금'
+  const min = Math.floor(sec / 60)
+  if (min < 60) return `${min}분 전`
+  const hr = Math.floor(min / 60)
+  if (hr < 24) return `${hr}시간 전`
+  const day = Math.floor(hr / 24)
+  if (day < 7) return `${day}일 전`
+  if (day < 30) return `${Math.floor(day / 7)}주 전`
+  if (day < 365) return `${Math.floor(day / 30)}개월 전`
+  return `${Math.floor(day / 365)}년 전`
 }
 
 const DEFAULT_IGNORE = ['node_modules', '.claude', '.git', '.docuflow', '.vscode', '.idea', 'dist', 'dist-electron', 'release', 'out', '.omc']
@@ -20,7 +40,7 @@ export default function DocsPanel({ onOpenFile }: Props) {
   const [files, setFiles] = useState<MdFile[]>([])
   const [search, setSearch] = useState('')
   const [loading, setLoading] = useState(false)
-  const [sortBy, setSortByState] = useState<'name' | 'path'>('path')
+  const [sortBy, setSortByState] = useState<SortBy>('path')
   const [showAll, setShowAllState] = useState(false)
   const [selectedProject, setSelectedProject] = useState<string | null>(null)
   const [ignoreDirs, setIgnoreDirs] = useState<string[]>(DEFAULT_IGNORE)
@@ -37,12 +57,12 @@ export default function DocsPanel({ onOpenFile }: Props) {
         window.electronAPI.storeGet('docsShowAll') as Promise<boolean | null>,
       ])
       if (savedIgnore) setIgnoreDirs(savedIgnore)
-      if (savedSort === 'name' || savedSort === 'path') setSortByState(savedSort)
+      if (savedSort === 'name' || savedSort === 'path' || savedSort === 'recent') setSortByState(savedSort)
       if (savedShowAll !== null) setShowAllState(savedShowAll)
     })()
   }, [])
 
-  const setSortBy = (v: 'name' | 'path') => {
+  const setSortBy = (v: SortBy) => {
     setSortByState(v)
     window.electronAPI.storeSet('docsSortBy', v)
   }
@@ -101,8 +121,8 @@ export default function DocsPanel({ onOpenFile }: Props) {
     const allFiles: MdFile[] = []
     await Promise.all(
       targetProjects.map(async (proj) => {
-        const mdPaths = await window.electronAPI.listMdFiles(proj.path)
-        for (const fullPath of mdPaths) {
+        const entries = await window.electronAPI.listMdFilesWithMtime(proj.path)
+        for (const { path: fullPath, mtime } of entries) {
           const name = fullPath.split(/[/\\]/).pop() || fullPath
           const rel = fullPath.replace(/\\/g, '/').replace(proj.path.replace(/\\/g, '/') + '/', '')
           allFiles.push({
@@ -111,6 +131,7 @@ export default function DocsPanel({ onOpenFile }: Props) {
             rel,
             projectName: proj.name,
             projectPath: proj.path,
+            mtime,
           })
         }
       })
@@ -118,6 +139,8 @@ export default function DocsPanel({ onOpenFile }: Props) {
 
     if (sortBy === 'name') {
       allFiles.sort((a, b) => a.name.localeCompare(b.name, 'ko'))
+    } else if (sortBy === 'recent') {
+      allFiles.sort((a, b) => b.mtime - a.mtime)
     } else {
       allFiles.sort((a, b) => a.rel.localeCompare(b.rel, 'ko'))
     }
@@ -266,6 +289,14 @@ export default function DocsPanel({ onOpenFile }: Props) {
             >
               경로순
             </button>
+            <button
+              onClick={() => setSortBy('recent')}
+              className={`text-[10px] px-1.5 py-0.5 rounded transition-colors ${
+                sortBy === 'recent' ? 'bg-blue-100 dark:bg-blue-900/40 text-blue-600' : 'text-gray-400 hover:text-gray-600'
+              }`}
+            >
+              최신순
+            </button>
           </div>
         </div>
       </div>
@@ -328,23 +359,27 @@ export default function DocsPanel({ onOpenFile }: Props) {
             </svg>
             <span className="text-[11px]">{search ? '검색 결과 없음' : 'md 파일 없음'}</span>
           </div>
-        ) : sortBy === 'name' ? (
-          /* 이름순: 폴더 그룹 없이 플랫 리스트 */
-          filtered.slice(0, visibleCount).map(f => (
-            <button
-              key={f.path}
-              onClick={() => onOpenFile(f.path, f.name)}
-              className="w-full flex items-center gap-1.5 px-2 py-1 rounded-lg text-xs hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors text-left"
-            >
-              <svg className="w-3.5 h-3.5 text-blue-400 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.7} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
-              </svg>
-              <div className="min-w-0 flex-1">
-                <div className="truncate text-gray-700 dark:text-gray-200">{f.name.replace(/\.md$/i, '')}</div>
-                <div className="truncate text-[9px] text-gray-400">{f.rel.substring(0, f.rel.lastIndexOf('/')) || '/'}</div>
-              </div>
-            </button>
-          ))
+        ) : sortBy !== 'path' ? (
+          /* 이름순 / 최신순: 폴더 그룹 없이 플랫 리스트 */
+          filtered.slice(0, visibleCount).map(f => {
+            const dir = f.rel.substring(0, f.rel.lastIndexOf('/')) || '/'
+            const subtitle = sortBy === 'recent' ? `${formatRelativeTime(f.mtime)} · ${dir}` : dir
+            return (
+              <button
+                key={f.path}
+                onClick={() => onOpenFile(f.path, f.name)}
+                className="w-full flex items-center gap-1.5 px-2 py-1 rounded-lg text-xs hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors text-left"
+              >
+                <svg className="w-3.5 h-3.5 text-blue-400 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.7} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+                </svg>
+                <div className="min-w-0 flex-1">
+                  <div className="truncate text-gray-700 dark:text-gray-200">{f.name.replace(/\.md$/i, '')}</div>
+                  <div className="truncate text-[9px] text-gray-400">{subtitle}</div>
+                </div>
+              </button>
+            )
+          })
         ) : (
           /* 경로순: 폴더별 그룹 (visibleCount 제한) */
           (() => {

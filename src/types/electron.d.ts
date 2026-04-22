@@ -60,6 +60,7 @@ export interface ElectronAPI {
   collectLinks: (dirPath: string) => Promise<{ filePath: string; fileName: string; targets: string[] }[]>
   findFile: (dirPath: string, name: string) => Promise<string | null>
   listMdFiles: (dirPath: string) => Promise<string[]>
+  listMdFilesWithMtime: (dirPath: string) => Promise<{ path: string; mtime: number }[]>
   createFile: (filePath: string, content?: string) => Promise<{ success: boolean; error?: string }>
   renameFile: (oldPath: string, newName: string) => Promise<{ success: boolean; newPath?: string; error?: string }>
   deleteFile: (filePath: string) => Promise<{ success: boolean; error?: string }>

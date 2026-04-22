@@ -1031,6 +1031,21 @@ ipcMain.handle('fs:listMdFiles', async (_e, dirPath: string) => {
   return results
 })
 
+// Same as fs:listMdFiles but also returns mtime for each file so the renderer
+// can sort by recency. statSync per file is acceptable at typical project size
+// because readdir already walks the tree.
+ipcMain.handle('fs:listMdFilesWithMtime', async (_e, dirPath: string) => {
+  const paths: string[] = []
+  await listMdFilesInDir(dirPath, paths)
+  const results: { path: string; mtime: number }[] = []
+  for (const p of paths) {
+    let mtime = 0
+    try { mtime = statSync(p).mtimeMs } catch { /* unreadable file */ }
+    results.push({ path: p, mtime })
+  }
+  return results
+})
+
 // ── IPC: Create file ────────────────────────────────────────────────────────
 ipcMain.handle('fs:createFile', async (_e, filePath: string, content: string = '') => {
   try {

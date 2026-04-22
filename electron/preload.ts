@@ -45,6 +45,7 @@ contextBridge.exposeInMainWorld('electronAPI', {
   collectLinks: (dirPath: string) => ipcRenderer.invoke('fs:collectLinks', dirPath),
   findFile: (dirPath: string, name: string) => ipcRenderer.invoke('fs:findFile', dirPath, name),
   listMdFiles: (dirPath: string) => ipcRenderer.invoke('fs:listMdFiles', dirPath),
+  listMdFilesWithMtime: (dirPath: string) => ipcRenderer.invoke('fs:listMdFilesWithMtime', dirPath),
   createFile: (filePath: string, content?: string) => ipcRenderer.invoke('fs:createFile', filePath, content ?? ''),
   renameFile: (oldPath: string, newName: string) => ipcRenderer.invoke('fs:rename', oldPath, newName),
   deleteFile: (filePath: string) => ipcRenderer.invoke('fs:deleteFile', filePath),
