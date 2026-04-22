@@ -1,6 +1,6 @@
 {
   "name": "docuflow",
-  "version": "2.7.3",
+  "version": "2.7.4",
   "description": "Docuflow - Document Workspace & Editor",
   "main": "dist-electron/main.js",
   "scripts": {

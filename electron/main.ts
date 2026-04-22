@@ -1553,12 +1553,18 @@ ipcMain.handle('export:docx', async (_e, srcMdPath: string, destPath: string) =>
 
 // ── IPC: Import DOCX → MD ──────────────────────────────────────────────────
 // mammoth's bundled `convertToMarkdown` does not support tables. We go through
-// HTML and let turndown+GFM build pipe tables. But turndown-plugin-gfm's table
-// rule only fires when the first row is all <th> — mammoth emits <td> for
-// header rows unless the Word doc uses an explicit "Table Header" style, which
-// almost nobody does. So we promote the first <tr>'s cells to <th> before
-// running turndown; any table with no header row becomes one, which matches
-// how most people read their first row anyway.
+// HTML and let turndown+GFM build pipe tables. Two HTML post-processes are
+// required before turndown:
+//
+// 1. Promote the first <tr>'s <td>s to <th>. turndown-plugin-gfm's table rule
+//    ONLY fires when the first row is all <th>; Word docs rarely flag a header
+//    style so mammoth emits <td>s throughout and the table would fall back to
+//    `keep()` (raw HTML) — which our markdown renderer then strips.
+//
+// 2. Flatten <p> tags inside <td>/<th>. GFM pipe tables must stay on one line
+//    per row; a literal newline inside a cell splits the row into paragraphs.
+//    mammoth wraps every cell's text in <p>, so without this step the pipes
+//    land on their own lines and the table is mangled into scattered text.
 function promoteFirstRowToTh(html: string): string {
   return html.replace(/<table(\b[^>]*)>([\s\S]*?)<\/table>/gi, (match, attrs: string, inner: string) => {
     if (/<th[\s>]/i.test(inner)) return match
@@ -1571,10 +1577,22 @@ function promoteFirstRowToTh(html: string): string {
   })
 }
 
+function flattenTableCells(html: string): string {
+  return html.replace(/<(td|th)(\b[^>]*)>([\s\S]*?)<\/\1>/gi, (_m, tag: string, attrs: string, inner: string) => {
+    // Replace <p>…</p> blocks with their text + <br>, then drop the trailing <br>.
+    let body = inner.replace(/<p(\b[^>]*)>([\s\S]*?)<\/p>/gi, (_pm, _pa, pc: string) => pc + '<br>')
+    body = body.replace(/(?:<br\s*\/?\s*>\s*)+$/i, '')
+    // Collapse whitespace and escape pipes so raw `|` in cell text doesn't
+    // split the row.
+    body = body.replace(/\s*\n\s*/g, ' ').replace(/\|/g, '\\|').replace(/ {2,}/g, ' ').trim()
+    return `<${tag}${attrs}>${body}</${tag}>`
+  })
+}
+
 ipcMain.handle('import:docxToMd', async (_e, srcDocxPath: string, destPath: string) => {
   try {
     const { value: rawHtml, messages } = await mammoth.convertToHtml({ path: srcDocxPath })
-    const html = promoteFirstRowToTh(rawHtml)
+    const html = flattenTableCells(promoteFirstRowToTh(rawHtml))
     const td = new TurndownService({
       headingStyle: 'atx',
       hr: '---',
