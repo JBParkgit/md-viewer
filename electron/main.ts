@@ -1552,13 +1552,29 @@ ipcMain.handle('export:docx', async (_e, srcMdPath: string, destPath: string) =>
 })
 
 // ── IPC: Import DOCX → MD ──────────────────────────────────────────────────
-// mammoth's bundled `convertToMarkdown` is documented as not supporting tables,
-// so tables silently vanished. We go through HTML instead — mammoth renders
-// tables as proper <table> markup, and turndown + the GFM plugin converts them
-// to pipe-style Markdown tables with header separator rows.
+// mammoth's bundled `convertToMarkdown` does not support tables. We go through
+// HTML and let turndown+GFM build pipe tables. But turndown-plugin-gfm's table
+// rule only fires when the first row is all <th> — mammoth emits <td> for
+// header rows unless the Word doc uses an explicit "Table Header" style, which
+// almost nobody does. So we promote the first <tr>'s cells to <th> before
+// running turndown; any table with no header row becomes one, which matches
+// how most people read their first row anyway.
+function promoteFirstRowToTh(html: string): string {
+  return html.replace(/<table(\b[^>]*)>([\s\S]*?)<\/table>/gi, (match, attrs: string, inner: string) => {
+    if (/<th[\s>]/i.test(inner)) return match
+    const trMatch = inner.match(/<tr(\b[^>]*)>([\s\S]*?)<\/tr>/i)
+    if (!trMatch) return match
+    const [fullTr, trAttrs, trInner] = trMatch
+    const promotedInner = trInner.replace(/<td(\b[^>]*)>([\s\S]*?)<\/td>/gi, '<th$1>$2</th>')
+    const promotedTr = `<tr${trAttrs}>${promotedInner}</tr>`
+    return `<table${attrs}>${inner.replace(fullTr, promotedTr)}</table>`
+  })
+}
+
 ipcMain.handle('import:docxToMd', async (_e, srcDocxPath: string, destPath: string) => {
   try {
-    const { value: html, messages } = await mammoth.convertToHtml({ path: srcDocxPath })
+    const { value: rawHtml, messages } = await mammoth.convertToHtml({ path: srcDocxPath })
+    const html = promoteFirstRowToTh(rawHtml)
     const td = new TurndownService({
       headingStyle: 'atx',
       hr: '---',
