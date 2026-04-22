@@ -4,6 +4,12 @@ import { readdir, readFile, writeFile, stat, mkdir, copyFile, unlink } from 'fs/
 import { statSync, existsSync } from 'fs'
 import { execFile } from 'child_process'
 import mammoth from 'mammoth'
+import TurndownService from 'turndown'
+// turndown-plugin-gfm ships CJS without .d.ts; declare the shape we use.
+// eslint-disable-next-line @typescript-eslint/no-var-requires
+const turndownPluginGfm = require('turndown-plugin-gfm') as {
+  gfm: (service: TurndownService) => void
+}
 import Store from 'electron-store'
 import chokidar from 'chokidar'
 // marked v18 is ESM-only (package.json "type": "module"). electron-vite
@@ -1546,19 +1552,26 @@ ipcMain.handle('export:docx', async (_e, srcMdPath: string, destPath: string) =>
 })
 
 // ── IPC: Import DOCX → MD ──────────────────────────────────────────────────
-// mammoth's convertToMarkdown produces GFM-compatible output. Tables, lists,
-// inline formatting, and links carry over cleanly; advanced features
-// (footnotes, text boxes, tracked changes) are lossy but won't throw.
+// mammoth's bundled `convertToMarkdown` is documented as not supporting tables,
+// so tables silently vanished. We go through HTML instead — mammoth renders
+// tables as proper <table> markup, and turndown + the GFM plugin converts them
+// to pipe-style Markdown tables with header separator rows.
 ipcMain.handle('import:docxToMd', async (_e, srcDocxPath: string, destPath: string) => {
   try {
-    // mammoth's TypeScript definitions ship without convertToMarkdown, but
-    // the function exists at runtime (exports.convertToMarkdown in lib/index.js).
-    const mammothAny = mammoth as unknown as {
-      convertToMarkdown: (input: { path: string }) => Promise<{ value: string; messages: { message: string }[] }>
-    }
-    const result = await mammothAny.convertToMarkdown({ path: srcDocxPath })
-    await writeFile(destPath, result.value, 'utf-8')
-    return { success: true, messages: result.messages.map((m) => m.message) }
+    const { value: html, messages } = await mammoth.convertToHtml({ path: srcDocxPath })
+    const td = new TurndownService({
+      headingStyle: 'atx',
+      hr: '---',
+      bulletListMarker: '-',
+      codeBlockStyle: 'fenced',
+      emDelimiter: '_',
+      strongDelimiter: '**',
+      linkStyle: 'inlined',
+    })
+    td.use(turndownPluginGfm.gfm)
+    const md = td.turndown(html)
+    await writeFile(destPath, md, 'utf-8')
+    return { success: true, messages: messages.map((m) => m.message) }
   } catch (err: unknown) {
     return { success: false, error: err instanceof Error ? err.message : String(err) }
   }

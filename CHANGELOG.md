@@ -1,5 +1,15 @@
 # Changelog
 
+## 2.7.2 — 2026-04-22
+
+### 수정 — Word → MD 가져오기에서 테이블이 사라지던 문제
+
+- **원인** — `mammoth.convertToMarkdown`은 공식 문서에서 "tables and some other features are not supported"로 명시된 제한된 변환기. 표는 그냥 드롭되어 빈 공간으로 남았음.
+- **해결** — 경로를 `mammoth.convertToHtml` → `turndown` + `turndown-plugin-gfm`으로 교체. mammoth가 내놓은 `<table>` 마크업을 GFM 파이프 표(헤더 구분선 포함)로 변환. 헤딩/목록/인라인 서식도 동일하게 유지.
+- **부작용** — 뉴 deps: `turndown` + `turndown-plugin-gfm` + `@types/turndown`.
+
+---
+
 ## 2.7.1 — 2026-04-22
 
 ### 수정
