@@ -260,6 +260,21 @@ ipcMain.handle('dialog:openFile', async () => {
   return result.filePaths
 })
 
+// ── IPC: Open Docx Dialog ────────────────────────────────────────────────────
+ipcMain.handle('dialog:openDocx', async () => {
+  if (!mainWindow) return null
+  const result = await dialog.showOpenDialog(mainWindow, {
+    properties: ['openFile'],
+    title: 'Word 문서 선택',
+    filters: [
+      { name: 'Word 문서', extensions: ['docx', 'doc'] },
+      { name: '모든 파일', extensions: ['*'] },
+    ],
+  })
+  if (result.canceled || result.filePaths.length === 0) return null
+  return result.filePaths[0]
+})
+
 // ── IPC: Open Folder Dialog ──────────────────────────────────────────────────
 ipcMain.handle('dialog:openFolder', async () => {
   if (!mainWindow) return null

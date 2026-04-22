@@ -3,6 +3,7 @@ import { contextBridge, ipcRenderer, webUtils } from 'electron'
 contextBridge.exposeInMainWorld('electronAPI', {
   // Folder / File system
   openFileDialog: () => ipcRenderer.invoke('dialog:openFile'),
+  openDocxDialog: () => ipcRenderer.invoke('dialog:openDocx'),
   onOpenExternal: (cb: (filePath: string) => void) => {
     const handler = (_e: Electron.IpcRendererEvent, filePath: string) => cb(filePath)
     ipcRenderer.on('file:openExternal', handler)

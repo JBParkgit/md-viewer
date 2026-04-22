@@ -35,6 +35,7 @@ export interface SearchResult {
 
 export interface ElectronAPI {
   openFileDialog: () => Promise<string[] | null>
+  openDocxDialog: () => Promise<string | null>
   onOpenExternal: (cb: (filePath: string) => void) => () => void
   openFolder: () => Promise<string | null>
   readDir: (path: string) => Promise<FileNode[]>

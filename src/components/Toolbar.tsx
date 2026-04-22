@@ -77,10 +77,8 @@ export default function Toolbar() {
   }, [])
 
   const handleImportDocx = useCallback(async () => {
-    const paths = await window.electronAPI.openFileDialog()
-    if (!paths || paths.length === 0) return
-    const docx = paths.find(p => /\.docx?$/i.test(p))
-    if (!docx) { alert('.docx 파일을 선택해 주세요.'); return }
+    const docx = await window.electronAPI.openDocxDialog()
+    if (!docx) return
     importDocxAsMd(docx)
   }, [])
 
