@@ -8,11 +8,84 @@ import { autocompletion, type CompletionContext } from '@codemirror/autocomplete
 import { HighlightStyle, syntaxHighlighting } from '@codemirror/language'
 import { tags as t } from '@lezer/highlight'
 
-// Strip the default underline from markdown link text so YAML frontmatter
-// arrays like `tags: [ "a", "b" ]` — which the markdown parser misreads as
-// a link reference — don't appear underlined.
-const noUnderlineLinks = HighlightStyle.define([
-  { tag: t.link, textDecoration: 'none' },
+// ── VSCode-like markdown syntax highlighting ─────────────────────────────
+// Light palette roughly follows GitHub Primer Light.
+const mdHighlightLight = HighlightStyle.define([
+  // Headings — blue + bold (VSCode keeps same font size in editor)
+  { tag: t.heading1, color: '#0550ae', fontWeight: '700' },
+  { tag: t.heading2, color: '#0550ae', fontWeight: '700' },
+  { tag: t.heading3, color: '#0550ae', fontWeight: '700' },
+  { tag: t.heading4, color: '#0550ae', fontWeight: '700' },
+  { tag: t.heading5, color: '#0550ae', fontWeight: '700' },
+  { tag: t.heading6, color: '#0550ae', fontWeight: '700' },
+
+  // Emphasis
+  { tag: t.strong, color: '#cf222e', fontWeight: '700' },
+  { tag: t.emphasis, color: '#953800', fontStyle: 'italic' },
+  { tag: t.strikethrough, color: '#6e7781', textDecoration: 'line-through' },
+
+  // Links — keep `textDecoration: none` so YAML frontmatter arrays
+  // (misparsed as link refs by the markdown grammar) don't get underlined.
+  { tag: t.link, color: '#0969da', textDecoration: 'none' },
+  { tag: t.url, color: '#0969da', textDecoration: 'underline' },
+
+  // Inline code / code fences
+  { tag: t.monospace, color: '#116329', backgroundColor: 'rgba(175,184,193,0.2)' },
+
+  // Quote
+  { tag: t.quote, color: '#6e7781', fontStyle: 'italic' },
+
+  // Horizontal rule
+  { tag: t.contentSeparator, color: '#8250df', fontWeight: '700' },
+
+  // Markup punctuation — headings `#`, emphasis `*`, code `` ` ``,
+  // quote `>`, list `-`, link brackets `[](...)`. All muted gray.
+  { tag: t.processingInstruction, color: '#8c959f' },
+  { tag: t.meta, color: '#8c959f' },
+  { tag: t.labelName, color: '#8250df' },
+
+  // Escape chars (\*, \_, etc.)
+  { tag: t.escape, color: '#0550ae' },
+
+  // HTML-ish tags inside markdown (<details>, <summary>, etc.)
+  { tag: t.tagName, color: '#116329' },
+  { tag: t.attributeName, color: '#8250df' },
+  { tag: t.attributeValue, color: '#0a3069' },
+])
+
+// Dark palette roughly follows GitHub Primer Dark. Layered on top of the
+// oneDark base theme — oneDark handles chrome (bg, selection, caret) while
+// this layer owns markdown-specific token colors.
+const mdHighlightDark = HighlightStyle.define([
+  { tag: t.heading1, color: '#79c0ff', fontWeight: '700' },
+  { tag: t.heading2, color: '#79c0ff', fontWeight: '700' },
+  { tag: t.heading3, color: '#79c0ff', fontWeight: '700' },
+  { tag: t.heading4, color: '#79c0ff', fontWeight: '700' },
+  { tag: t.heading5, color: '#79c0ff', fontWeight: '700' },
+  { tag: t.heading6, color: '#79c0ff', fontWeight: '700' },
+
+  { tag: t.strong, color: '#ff7b72', fontWeight: '700' },
+  { tag: t.emphasis, color: '#ffa657', fontStyle: 'italic' },
+  { tag: t.strikethrough, color: '#8b949e', textDecoration: 'line-through' },
+
+  { tag: t.link, color: '#58a6ff', textDecoration: 'none' },
+  { tag: t.url, color: '#58a6ff', textDecoration: 'underline' },
+
+  { tag: t.monospace, color: '#a5d6ff', backgroundColor: 'rgba(110,118,129,0.4)' },
+
+  { tag: t.quote, color: '#8b949e', fontStyle: 'italic' },
+
+  { tag: t.contentSeparator, color: '#d2a8ff', fontWeight: '700' },
+
+  { tag: t.processingInstruction, color: '#6e7681' },
+  { tag: t.meta, color: '#6e7681' },
+  { tag: t.labelName, color: '#d2a8ff' },
+
+  { tag: t.escape, color: '#79c0ff' },
+
+  { tag: t.tagName, color: '#7ee787' },
+  { tag: t.attributeName, color: '#d2a8ff' },
+  { tag: t.attributeValue, color: '#a5d6ff' },
 ])
 import { useAppStore, type Tab } from '../stores/useAppStore'
 
@@ -466,7 +539,7 @@ export default function LiveEditor({ tab, onSave, onChange, editorViewRef, onScr
     }),
     EditorView.lineWrapping,
     EditorView.contentAttributes.of({ spellcheck: spellcheckEnabled ? 'true' : 'false' }),
-    syntaxHighlighting(noUnderlineLinks),
+    syntaxHighlighting(isDark ? mdHighlightDark : mdHighlightLight),
     keymap.of([indentWithTab]),
     saveKeymap,
     pasteHandler,
