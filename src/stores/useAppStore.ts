@@ -49,6 +49,7 @@ interface AppStore {
   setTabScrollPos: (tabId: string, pos: number) => void
   setTabFileChanged: (filePath: string, changed: boolean) => void
   markTabSaved: (tabId: string, content: string) => void
+  remapPaths: (oldBasePath: string, newBasePath: string) => void
 
   // Split pane
   splitMode: null | 'vertical'
@@ -167,6 +168,25 @@ export function setProjectCounter(n: number) { projectCounter = n }
 
 function saveProjects(projects: Project[]) {
   window.electronAPI.storeSet('projects', projects.map(p => ({ path: p.path, name: p.name })))
+}
+
+function normalizePath(p: string): string {
+  return p.replace(/\\/g, '/').replace(/\/+/g, '/')
+}
+
+function convertSeparators(p: string, styleFrom: string): string {
+  if (styleFrom.includes('\\') && !styleFrom.includes('/')) return p.replace(/\//g, '\\')
+  return p
+}
+
+function remapPath(currentPath: string, oldBasePath: string, newBasePath: string): string | null {
+  const cur = normalizePath(currentPath)
+  const oldBase = normalizePath(oldBasePath)
+  const newBase = normalizePath(newBasePath)
+  if (cur === oldBase) return convertSeparators(newBase, currentPath)
+  if (!cur.startsWith(oldBase + '/')) return null
+  const suffix = cur.slice(oldBase.length)
+  return convertSeparators(newBase + suffix, currentPath)
 }
 
 export const useAppStore = create<AppStore>((set, get) => ({
@@ -370,6 +390,98 @@ export const useAppStore = create<AppStore>((set, get) => ({
       tabs: s.tabs.map(t => t.id === tabId ? { ...t, content, isDirty: false, fileChangedOnDisk: false } : t),
       rightTabs: s.rightTabs.map(t => t.id === tabId ? { ...t, content, isDirty: false, fileChangedOnDisk: false } : t),
     }))
+  },
+
+  remapPaths: (oldBasePath, newBasePath) => {
+    set(s => {
+      const mapTab = (t: Tab): Tab => {
+        const nextPath = remapPath(t.filePath, oldBasePath, newBasePath)
+        if (!nextPath) return t
+        const fileName = nextPath.replace(/\\/g, '/').split('/').pop() || t.fileName
+        return { ...t, filePath: nextPath, fileName }
+      }
+
+      const remapList = (paths: string[]) => {
+        let changed = false
+        const next = paths.map((p) => {
+          const mapped = remapPath(p, oldBasePath, newBasePath)
+          if (!mapped) return p
+          changed = true
+          return mapped
+        })
+        return { changed, next }
+      }
+
+      const remapRecent = () => {
+        let changed = false
+        const next = s.recentFiles.map((f) => {
+          const path = remapPath(f.path, oldBasePath, newBasePath)
+          if (!path) return f
+          changed = true
+          const name = path.replace(/\\/g, '/').split('/').pop() || f.name
+          return { path, name }
+        })
+        return { changed, next }
+      }
+
+      const remapRecord = (record: Record<string, string[]>) => {
+        let changed = false
+        const next: Record<string, string[]> = {}
+        for (const [key, value] of Object.entries(record)) {
+          const { changed: listChanged, next: listNext } = remapList(value)
+          next[key] = listNext
+          changed = changed || listChanged
+        }
+        return { changed, next }
+      }
+
+      const remapStringRecord = (record: Record<string, string>) => {
+        let changed = false
+        const next: Record<string, string> = {}
+        for (const [key, value] of Object.entries(record)) {
+          const mapped = remapPath(value, oldBasePath, newBasePath)
+          next[key] = mapped || value
+          changed = changed || !!mapped
+        }
+        return { changed, next }
+      }
+
+      const remapFileTags = (record: Record<string, string[]>) => {
+        let changed = false
+        const next: Record<string, string[]> = {}
+        for (const [key, value] of Object.entries(record)) {
+          const mapped = remapPath(key, oldBasePath, newBasePath)
+          next[mapped || key] = value
+          changed = changed || !!mapped
+        }
+        return { changed, next }
+      }
+
+      const tabs = s.tabs.map(mapTab)
+      const rightTabs = s.rightTabs.map(mapTab)
+      const favorites = remapList(s.favorites)
+      const recentFiles = remapRecent()
+      const openDirs = remapRecord(s.openDirs)
+      const lastOpenedDir = remapStringRecord(s.lastOpenedDir)
+      const fileTags = remapFileTags(s.fileTags)
+      const navHistory = remapList(s.navHistory)
+
+      if (favorites.changed) window.electronAPI.storeSet('favorites', favorites.next)
+      if (recentFiles.changed) window.electronAPI.storeSet('recentFiles', recentFiles.next)
+      if (openDirs.changed) window.electronAPI.storeSet('openDirs', openDirs.next)
+      if (fileTags.changed) window.electronAPI.storeSet('fileTags', fileTags.next)
+
+      return {
+        tabs,
+        rightTabs,
+        favorites: favorites.next,
+        recentFiles: recentFiles.next,
+        openDirs: openDirs.next,
+        lastOpenedDir: lastOpenedDir.next,
+        fileTags: fileTags.next,
+        navHistory: navHistory.next,
+      }
+    })
   },
 
   toggleSplit: () => {

@@ -10,6 +10,7 @@ import CalendarView from './components/CalendarView'
 import WorkflowBoard from './components/WorkflowBoard'
 import PullResultModal from './components/PullResultModal'
 import DialogHost from './components/DialogHost'
+import CommandPalette from './components/CommandPalette'
 import { confirm } from './utils/dialog'
 import { isRecentlySaved } from './utils/recentSave'
 
@@ -377,6 +378,7 @@ export default function App() {
       <Toolbar />
       <PullResultModal />
       <DialogHost />
+      <CommandPalette openFile={openFile} />
       <div className="flex flex-1 overflow-hidden">
         <Sidebar
           onOpenFile={(p, n) => openFile(p, n, true)}

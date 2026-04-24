@@ -6,6 +6,7 @@ import FileHistoryModal from './FileHistoryModal'
 import { exportMdToPdf, exportMdToDocx, importDocxAsMd } from '../utils/exportImport'
 import { getFileGroup, FileTypeIcon } from '../utils/fileType'
 import { alert, confirm } from '../utils/dialog'
+import { updateWikiLinksForPathChanges } from '../utils/wikilinks'
 import type { FileNode } from '../types/electron'
 import type { GitStatusMap } from './ProjectTree'
 
@@ -112,7 +113,7 @@ function FileRow({ node, onOpenFile, onOpenFilePinned, searchQuery, depth, proje
       setLocalOpen(newVal)
     }
   }
-  const { favorites, addFavorite, removeFavorite, tabs, activeTabId, closeTab, setLastOpenedDir, markTabSaved } = useAppStore()
+  const { favorites, addFavorite, removeFavorite, tabs, activeTabId, closeTab, setLastOpenedDir, markTabSaved, remapPaths } = useAppStore()
   const [contextMenu, setContextMenu] = useState<{ x: number; y: number } | null>(null)
   const contextMenuRef = useRef<HTMLDivElement>(null)
   useLayoutEffect(() => {
@@ -140,6 +141,7 @@ function FileRow({ node, onOpenFile, onOpenFilePinned, searchQuery, depth, proje
   const renameInputRef = useRef<HTMLInputElement>(null)
   const currentUser = useAppStore(s => s.currentUser)
   const workflowEntry = useWorkflowStore(s => s.entries[node.path])
+  const scanWorkflowProject = useWorkflowStore(s => s.scanProject)
   const workflowMeta = workflowEntry?.meta
   const needsMyAction = !!workflowMeta && !!currentUser && workflowMeta.status === 'review' &&
     workflowMeta.approvers.some(a => a.name === currentUser && a.status === 'pending')
@@ -194,6 +196,9 @@ function FileRow({ node, onOpenFile, onOpenFilePinned, searchQuery, depth, proje
     const newName = renameValue.trim()
     if (!newName || newName === node.name) { setIsRenaming(false); return }
     const result = await window.electronAPI.renameFile(node.path, newName)
+    if (result.success && result.newPath && result.newPath !== node.path) {
+      await applyPathChanges([{ oldPath: node.path, newPath: result.newPath }])
+    }
     if (!result.success) {
       alert(result.error || '이름 변경 실패')
     }
@@ -203,6 +208,49 @@ function FileRow({ node, onOpenFile, onOpenFilePinned, searchQuery, depth, proje
   const cancelRename = () => {
     setIsRenaming(false)
     setRenameValue('')
+  }
+
+  const remapWatchedOpenFiles = async (oldBasePath: string, newBasePath: string) => {
+    const allTabs = [...useAppStore.getState().tabs, ...useAppStore.getState().rightTabs]
+    const oldNorm = oldBasePath.replace(/\\/g, '/')
+    for (const tab of allTabs) {
+      const currentNorm = tab.filePath.replace(/\\/g, '/')
+      let nextPath: string | null = null
+      if (currentNorm === oldNorm) {
+        nextPath = newBasePath
+      } else if (currentNorm.startsWith(oldNorm + '/')) {
+        nextPath = newBasePath.replace(/\\/g, '/') + currentNorm.slice(oldNorm.length)
+        if (tab.filePath.includes('\\') && !tab.filePath.includes('/')) nextPath = nextPath.replace(/\//g, '\\')
+      }
+      if (!nextPath || nextPath === tab.filePath) continue
+      await window.electronAPI.unwatchFile(tab.filePath).catch(() => {})
+      await window.electronAPI.watchFile(nextPath).catch(() => {})
+    }
+  }
+
+  const applyPathChanges = async (changes: Array<{ oldPath: string; newPath: string }>) => {
+    if (changes.length === 0) return
+    for (const { oldPath, newPath } of changes) {
+      remapPaths(oldPath, newPath)
+      await remapWatchedOpenFiles(oldPath, newPath)
+    }
+    if (!projectPath) return
+    const summary = await updateWikiLinksForPathChanges(projectPath, changes)
+    await scanWorkflowProject(projectPath)
+    if (summary.updatedLinks > 0 || summary.skippedDirtyFiles.length > 0) {
+      const messages: string[] = []
+      if (summary.updatedLinks > 0) {
+        messages.push(`링크 ${summary.updatedLinks}개를 ${summary.updatedFiles.length}개 문서에서 갱신했습니다.`)
+      }
+      if (summary.skippedDirtyFiles.length > 0) {
+        messages.push(`열려 있고 저장되지 않은 문서 ${summary.skippedDirtyFiles.length}개는 자동 수정하지 않았습니다.`)
+      }
+      await alert({
+        title: '링크 갱신',
+        message: messages.join('\n'),
+        variant: summary.skippedDirtyFiles.length > 0 ? 'warning' : 'success',
+      })
+    }
   }
 
   const handleRenameKeyDown = (e: React.KeyboardEvent) => {
@@ -260,14 +308,17 @@ function FileRow({ node, onOpenFile, onOpenFilePinned, searchQuery, depth, proje
       if (single) srcPaths.push(single)
     }
     if (srcPaths.length === 0) return
+    const pathChanges: Array<{ oldPath: string; newPath: string }> = []
     for (const srcPath of srcPaths) {
       if (srcPath === destDir) continue
       if (destDir.startsWith(srcPath + '\\') || destDir.startsWith(srcPath + '/')) continue
       const result = await window.electronAPI.move(srcPath, destDir)
+      if (result.success && result.newPath) pathChanges.push({ oldPath: srcPath, newPath: result.newPath })
       if (!result.success) {
         alert(result.error || '이동 실패')
       }
     }
+    await applyPathChanges(pathChanges)
   }
 
   const handleDirDragOver = (e: React.DragEvent) => {

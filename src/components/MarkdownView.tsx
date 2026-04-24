@@ -178,48 +178,131 @@ export default function MarkdownView({ tab, scrollRef, lineNumbers, cursorLine, 
     if (scrollRef) scrollRef.current = containerRef.current
   }, [scrollRef])
 
-  // Debounced save — declared before the restore effect so that the restore
-  // effect can cancel any pending save.
+  // Debounced save with a pending-value ref so that a tab switch can flush
+  // the last scroll position (otherwise clicking a link within the debounce
+  // window silently loses the scroll save for the tab we're leaving).
   const scrollSaveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const pendingSaveRef = useRef<{ tabId: string; filePath: string; scrollPos: number } | null>(null)
+  const flushPendingSave = useCallback(() => {
+    if (scrollSaveTimerRef.current) {
+      clearTimeout(scrollSaveTimerRef.current)
+      scrollSaveTimerRef.current = null
+    }
+    const p = pendingSaveRef.current
+    if (p) {
+      setTabScrollPos(p.tabId, p.scrollPos)
+      pendingSaveRef.current = null
+    }
+  }, [setTabScrollPos])
 
   // Restore scroll position. Preview-tab reuse keeps the same tab.id but
   // swaps filePath, so we explicitly detect that case and force top.
   const prevTabIdRef = useRef(tab.id)
   const prevFilePathRef = useRef(tab.filePath)
+  // Active restoration stop fn — invoked on confirmed user scroll to abort the
+  // ResizeObserver re-apply loop.
+  const restoreStopRef = useRef<(() => void) | null>(null)
+  // Ignore scroll events fired during the short tail of a programmatic scroll.
+  // Target-comparison would be unreliable because the browser clamps scrollTop
+  // to `scrollHeight - clientHeight` when content hasn't finished loading,
+  // making our own scrolls look like user scrolls.
+  const ignoreScrollUntilRef = useRef(0)
   useEffect(() => {
     if (!containerRef.current) return
-    // A pending save from the previous file would otherwise land on the
-    // new file (same preview tab.id) and pollute its saved scroll position.
-    if (scrollSaveTimerRef.current) {
-      clearTimeout(scrollSaveTimerRef.current)
-      scrollSaveTimerRef.current = null
-    }
+    flushPendingSave()
     const isPreviewReuse =
       prevTabIdRef.current === tab.id && prevFilePathRef.current !== tab.filePath
-    containerRef.current.scrollTop = isPreviewReuse ? 0 : tab.scrollPos
+    const target = isPreviewReuse ? 0 : tab.scrollPos
+    const container = containerRef.current
+
+    // Silence the scroll event we're about to fire so the clamped scrollTop
+    // isn't misread as user intent and saved back to the tab.
+    ignoreScrollUntilRef.current = performance.now() + 100
+    container.scrollTop = target
     prevTabIdRef.current = tab.id
     prevFilePathRef.current = tab.filePath
-  }, [tab.id, tab.filePath])
+
+    if (target <= 0) return
+    // Async content (images, Mermaid, katex) may expand the page AFTER this
+    // effect runs, which clamps the scroll position we just set. Re-apply
+    // whenever the container resizes, for up to 2 seconds, or until the user
+    // actually scrolls.
+    const reapply = () => {
+      const el = containerRef.current
+      if (!el) return
+      if (Math.abs(el.scrollTop - target) > 1 && el.scrollHeight - el.clientHeight >= target) {
+        ignoreScrollUntilRef.current = performance.now() + 50
+        el.scrollTop = target
+      }
+    }
+    const observer = new ResizeObserver(reapply)
+    observer.observe(container)
+    for (const child of Array.from(container.children)) observer.observe(child)
+    const stop = () => {
+      observer.disconnect()
+      clearTimeout(stopTimer)
+      restoreStopRef.current = null
+    }
+    const stopTimer = setTimeout(stop, 2000)
+    restoreStopRef.current = stop
+    return stop
+  }, [tab.id, tab.filePath, flushPendingSave])
 
   // Save scroll position — debounced so a fast scroll doesn't trigger
   // a store update (and thus a MarkdownView re-render) on every frame.
-  // Scroll position only matters for restoration on tab switch, so
-  // persisting it 200ms after scroll stops is fine. The callback verifies
-  // the file is still the one that was scrolled, so a timer scheduled
-  // before a preview-tab reuse can't corrupt the new file's scrollPos.
+  // The scroll value is captured into pendingSaveRef at scroll time, so
+  // tab-switches can flush it synchronously without reading a (possibly
+  // clamped) containerRef scrollTop after new content has rendered.
   const handleScroll = useCallback(() => {
+    const el = containerRef.current
+    if (!el) return
+    // When a tab switch causes the browser to clamp scrollTop (new content is
+    // shorter than the previous scroll position), a scroll event fires BEFORE
+    // useEffect runs and the new closure's tab.id differs from the pending
+    // save's tabId. Without this guard, the clamp event would overwrite the
+    // previous tab's pending save, silently losing its scroll position.
+    const stale = pendingSaveRef.current
+    if (stale && stale.tabId !== tab.id) {
+      if (scrollSaveTimerRef.current) {
+        clearTimeout(scrollSaveTimerRef.current)
+        scrollSaveTimerRef.current = null
+      }
+      setTabScrollPos(stale.tabId, stale.scrollPos)
+      pendingSaveRef.current = null
+      // Suppress further clamp/restoration events for a brief window so the
+      // incoming tab's restoration can take over cleanly.
+      ignoreScrollUntilRef.current = performance.now() + 150
+      return
+    }
+    // Ignore scroll events fired in the tail of a programmatic scroll
+    // (browser may clamp scrollTop during async content load, so comparing to
+    // the target value is unreliable — time-based silencing is sturdier).
+    if (performance.now() < ignoreScrollUntilRef.current) return
+    // Confirmed user scroll — abort any restoration loop so it doesn't snap
+    // the user back.
+    if (restoreStopRef.current) restoreStopRef.current()
     if (onScroll) onScroll()
     if (scrollSaveTimerRef.current) clearTimeout(scrollSaveTimerRef.current)
-    const scrolledPath = tab.filePath
+    pendingSaveRef.current = {
+      tabId: tab.id,
+      filePath: tab.filePath,
+      scrollPos: el.scrollTop,
+    }
     scrollSaveTimerRef.current = setTimeout(() => {
-      if (!containerRef.current) return
-      if (scrolledPath !== prevFilePathRef.current) return
-      setTabScrollPos(tab.id, containerRef.current.scrollTop)
+      const p = pendingSaveRef.current
+      if (!p) return
+      // Skip if the tab has already been swapped to another file (e.g. a
+      // preview-tab reuse) — we only want to save for the file that was scrolled.
+      if (p.filePath !== prevFilePathRef.current) { pendingSaveRef.current = null; return }
+      setTabScrollPos(p.tabId, p.scrollPos)
+      pendingSaveRef.current = null
+      scrollSaveTimerRef.current = null
     }, 200)
   }, [tab.id, tab.filePath, setTabScrollPos, onScroll])
   useEffect(() => () => {
-    if (scrollSaveTimerRef.current) clearTimeout(scrollSaveTimerRef.current)
-  }, [])
+    // Unmount: flush anything still pending so we don't lose the last scroll.
+    flushPendingSave()
+  }, [flushPendingSave])
 
   const markdownBodyRef = useRef<HTMLDivElement>(null)
 
