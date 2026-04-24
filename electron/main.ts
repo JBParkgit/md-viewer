@@ -1177,7 +1177,15 @@ ipcMain.handle('dialog:cloneFolder', async () => {
 // Force UTF-8 output so Korean (and other multi-byte) author names, commit
 // messages, and file contents don't come back as mojibake on systems whose
 // locale defaults git to legacy codepages (e.g. CP949 on Korean Windows).
-const GIT_UTF8_FLAGS = ['-c', 'i18n.logOutputEncoding=UTF-8', '-c', 'i18n.commitEncoding=UTF-8']
+// `core.quotePath=false` keeps non-ASCII filenames (Korean, etc.) readable in
+// porcelain/diff output instead of being printed as `\353\270\224...` octal
+// escapes. Without this, the pull-result dialog and any other UI that parses
+// `git diff --name-status` shows escaped byte sequences instead of file names.
+const GIT_UTF8_FLAGS = [
+  '-c', 'i18n.logOutputEncoding=UTF-8',
+  '-c', 'i18n.commitEncoding=UTF-8',
+  '-c', 'core.quotePath=false',
+]
 // Use the .exe suffix on Windows so execFile can resolve git without a shell.
 // Going through `shell: true` made git work without PATHEXT, but it also caused
 // arguments with spaces (e.g. Korean filenames containing a space) to be
@@ -1221,7 +1229,7 @@ ipcMain.handle('git:init', async (_e, cwd: string) => {
 })
 
 ipcMain.handle('git:status', async (_e, cwd: string) => {
-  return gitExec(['-c', 'core.quotePath=false', 'status', '--porcelain', '-uall'], cwd)
+  return gitExec(['status', '--porcelain', '-uall'], cwd)
 })
 
 ipcMain.handle('git:branch', async (_e, cwd: string) => {
