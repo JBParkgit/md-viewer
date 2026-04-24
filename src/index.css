@@ -56,15 +56,10 @@ html, body, #root {
   color: inherit;
 }
 
-/* Browser-level virtualization for preview: skip layout/style/paint for
-   block-level children that are outside the viewport. contain-intrinsic-size
-   gives the browser a placeholder height so the scrollbar doesn't jump as
-   elements enter/leave the rendered window. Modern Chromium handles anchor
-   links and find-in-page correctly with this. */
-.markdown-body > * {
-  content-visibility: auto;
-  contain-intrinsic-size: auto 300px;
-}
+/* Disabled preview virtualization. `content-visibility:auto` makes long-doc
+   scroll restoration unstable because off-screen blocks use placeholder sizes
+   until they are materialized, so returning to a pinned tab can land at the
+   wrong visual position even when scrollTop was saved correctly. */
 
 /* ==text== highlight */
 .markdown-body mark {
