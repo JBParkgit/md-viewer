@@ -1178,13 +1178,18 @@ ipcMain.handle('dialog:cloneFolder', async () => {
 // messages, and file contents don't come back as mojibake on systems whose
 // locale defaults git to legacy codepages (e.g. CP949 on Korean Windows).
 const GIT_UTF8_FLAGS = ['-c', 'i18n.logOutputEncoding=UTF-8', '-c', 'i18n.commitEncoding=UTF-8']
+// Use the .exe suffix on Windows so execFile can resolve git without a shell.
+// Going through `shell: true` made git work without PATHEXT, but it also caused
+// arguments with spaces (e.g. Korean filenames containing a space) to be
+// re-split by cmd.exe, producing "pathspec did not match any files" errors.
+const GIT_BIN = process.platform === 'win32' ? 'git.exe' : 'git'
 
 function gitExec(args: string[], cwd: string): Promise<{ success: boolean; output?: string; error?: string }> {
   return new Promise((resolve) => {
-    execFile('git', [...GIT_UTF8_FLAGS, ...args], {
+    execFile(GIT_BIN, [...GIT_UTF8_FLAGS, ...args], {
       cwd,
       timeout: 30000,
-      shell: true,
+      windowsHide: true,
       env: { ...process.env, LC_ALL: 'C.UTF-8', LANG: 'C.UTF-8' },
     }, (err, stdout, stderr) => {
       if (err) {
