@@ -135,15 +135,25 @@ function OutgoingLinksPanel({ content, filePath, projectPath }: { content: strin
   }, [content])
 
   useEffect(() => {
-    if (!projectPath || linkTargets.length === 0) { setResolved([]); setLoading(false); return }
+    if (linkTargets.length === 0) { setResolved([]); setLoading(false); return }
+    // Fall back to the current file's directory when the file isn't inside a
+    // registered project — otherwise we'd show "참조하는 문서 없음" even
+    // though the document has links.
+    const searchRoot =
+      projectPath || filePath.replace(/\\/g, '/').split('/').slice(0, -1).join('/')
+    if (!searchRoot) {
+      setResolved(linkTargets.map(name => ({ name, resolvedPath: null })))
+      setLoading(false)
+      return
+    }
     setLoading(true)
     Promise.all(
       linkTargets.map(async name => ({
         name,
-        resolvedPath: await window.electronAPI.findFile(projectPath, name).catch(() => null),
+        resolvedPath: await window.electronAPI.findFile(searchRoot, name).catch(() => null),
       }))
     ).then(results => { setResolved(results); setLoading(false) })
-  }, [linkTargets, projectPath])
+  }, [linkTargets, projectPath, filePath])
 
   const handleOpen = async (fp: string) => {
     const fn = fp.replace(/\\/g, '/').split('/').pop() || fp

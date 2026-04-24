@@ -23,8 +23,14 @@ export default function Toolbar() {
     showTOC, setShowTOC, toggleSidebar, sidebarCollapsed, splitMode, toggleSplit,
     spellcheckEnabled, setSpellcheckEnabled,
   } = useAppStore()
+  const canNavBack = useAppStore(s => s.navIndex > 0)
+  const canNavForward = useAppStore(s => s.navIndex < s.navHistory.length - 1)
   const [openIdx, setOpenIdx] = useState<number | null>(null)
   const [helpOpen, setHelpOpen] = useState(false)
+
+  const dispatchNav = (direction: 'back' | 'forward') => {
+    window.dispatchEvent(new CustomEvent('nav:go', { detail: { direction } }))
+  }
 
   const handleAddProject = useCallback(async () => {
     const folder = await window.electronAPI.openFolder()
@@ -162,6 +168,33 @@ export default function Toolbar() {
       >
         Docuflow <span className="text-[10px] font-normal text-gray-400 dark:text-gray-500 align-middle">v{__APP_VERSION__}</span>
       </span>
+
+      {/* Back / Forward (preview-tab navigation) */}
+      <div
+        className="flex items-center gap-0.5 mr-1.5 flex-shrink-0"
+        style={{ WebkitAppRegion: 'no-drag' } as React.CSSProperties}
+      >
+        <button
+          onClick={() => dispatchNav('back')}
+          disabled={!canNavBack}
+          title="이전 파일 (Alt+←)"
+          className="p-1 rounded text-gray-600 dark:text-gray-300 hover:bg-gray-200/70 dark:hover:bg-gray-700/70 disabled:opacity-30 disabled:cursor-not-allowed"
+        >
+          <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M15 19l-7-7 7-7" />
+          </svg>
+        </button>
+        <button
+          onClick={() => dispatchNav('forward')}
+          disabled={!canNavForward}
+          title="다음 파일 (Alt+→)"
+          className="p-1 rounded text-gray-600 dark:text-gray-300 hover:bg-gray-200/70 dark:hover:bg-gray-700/70 disabled:opacity-30 disabled:cursor-not-allowed"
+        >
+          <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M9 5l7 7-7 7" />
+          </svg>
+        </button>
+      </div>
 
       {/* Menu buttons — z-50 so they stay above the backdrop */}
       <div className="flex items-center flex-shrink-0 relative z-50" style={{ WebkitAppRegion: 'no-drag' } as React.CSSProperties}>

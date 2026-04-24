@@ -283,6 +283,36 @@ export default function App() {
     return () => window.removeEventListener('menu:openFile', handler)
   }, [openFile])
 
+  // ── Back/forward preview navigation ────────────────────────────────────────
+  useEffect(() => {
+    const go = async (direction: 'back' | 'forward') => {
+      const store = useAppStore.getState()
+      const path = direction === 'back' ? store.navigateBack() : store.navigateForward()
+      if (!path) return
+      const name = path.split(/[/\\]/).pop() || path
+      try {
+        await openFile(path, name, true)
+      } finally {
+        useAppStore.setState({ _skipNavPush: false })
+      }
+    }
+    const navHandler = (e: Event) => {
+      const detail = (e as CustomEvent).detail as { direction: 'back' | 'forward' }
+      go(detail.direction)
+    }
+    const keyHandler = (e: KeyboardEvent) => {
+      if (!e.altKey || e.ctrlKey || e.metaKey || e.shiftKey) return
+      if (e.key === 'ArrowLeft') { e.preventDefault(); go('back') }
+      else if (e.key === 'ArrowRight') { e.preventDefault(); go('forward') }
+    }
+    window.addEventListener('nav:go', navHandler)
+    window.addEventListener('keydown', keyHandler)
+    return () => {
+      window.removeEventListener('nav:go', navHandler)
+      window.removeEventListener('keydown', keyHandler)
+    }
+  }, [openFile])
+
   // ── Open file from OS (command line, file association, second-instance) ───
   useEffect(() => {
     const unsub = window.electronAPI.onOpenExternal((filePath) => {

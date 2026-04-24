@@ -60,6 +60,13 @@ interface AppStore {
   setActivePane: (paneId: PaneId) => void
   moveTabToPane: (tabId: string, targetPane: PaneId) => void
 
+  // Preview-tab navigation history (browser-style back/forward)
+  navHistory: string[]
+  navIndex: number
+  _skipNavPush: boolean
+  navigateBack: () => string | null
+  navigateForward: () => string | null
+
   // Projects (multiple root folders)
   projects: Project[]
   addProject: (folderPath: string) => void
@@ -177,6 +184,18 @@ export const useAppStore = create<AppStore>((set, get) => ({
     const state = get()
     const { activePaneId, splitMode } = state
 
+    // Track preview-tab navigation in history (browser-style back/forward).
+    // Skip when the open was triggered by a back/forward action itself.
+    const pushHistory = () => {
+      if (!isPreview) return
+      const s = get()
+      if (s._skipNavPush) return
+      if (s.navHistory[s.navIndex] === filePath) return
+      const truncated = s.navHistory.slice(0, s.navIndex + 1)
+      truncated.push(filePath)
+      set({ navHistory: truncated, navIndex: truncated.length - 1 })
+    }
+
     // Check both panes for existing tab
     const existingLeft = state.tabs.find(t => t.filePath === filePath)
     const existingRight = state.rightTabs.find(t => t.filePath === filePath)
@@ -202,6 +221,7 @@ export const useAppStore = create<AppStore>((set, get) => ({
         else updates.rightActiveTabId = existing.id
       }
       set(updates as any)
+      pushHistory()
       return
     }
 
@@ -223,11 +243,33 @@ export const useAppStore = create<AppStore>((set, get) => ({
         const updated = [...paneTabs]
         updated[previewIdx] = { ...newTab, id: paneTabs[previewIdx].id }
         set({ [tabsKey]: updated, [activeKey]: paneTabs[previewIdx].id } as any)
+        pushHistory()
         return
       }
     }
 
     set({ [tabsKey]: [...paneTabs, newTab], [activeKey]: id } as any)
+    pushHistory()
+  },
+
+  navHistory: [],
+  navIndex: -1,
+  _skipNavPush: false,
+
+  navigateBack: () => {
+    const { navHistory, navIndex } = get()
+    if (navIndex <= 0) return null
+    const newIdx = navIndex - 1
+    set({ navIndex: newIdx, _skipNavPush: true })
+    return navHistory[newIdx]
+  },
+
+  navigateForward: () => {
+    const { navHistory, navIndex } = get()
+    if (navIndex >= navHistory.length - 1) return null
+    const newIdx = navIndex + 1
+    set({ navIndex: newIdx, _skipNavPush: true })
+    return navHistory[newIdx]
   },
 
   pinTab: (tabId) => {

@@ -320,10 +320,13 @@ export default function LiveEditor({ tab, onSave, onChange, editorViewRef, onScr
     ])
   ), [onSave, wrapSelection, toggleLinePrefix])
 
-  // Find project root for current file
+  // Find project root for current file (case/separator-insensitive on Windows)
   const getProjectRoot = useCallback(() => {
+    const norm = (p: string) => p.replace(/\\/g, '/').toLowerCase()
+    const file = norm(tab.filePath)
     for (const p of projects) {
-      if (tab.filePath.startsWith(p.path)) return p.path
+      const root = norm(p.path)
+      if (file === root || file.startsWith(root + '/')) return p.path
     }
     const sep = tab.filePath.includes('/') ? '/' : '\\'
     return tab.filePath.split(sep).slice(0, -1).join(sep)

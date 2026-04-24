@@ -983,8 +983,10 @@ ipcMain.handle('fs:collectLinks', async (_e, dirPath: string) => {
 // ── IPC: Find file by name in directory ─────────────────────────────────────
 async function findFileInDir(dirPath: string, name: string, depth = 0): Promise<string | null> {
   if (depth > 6) return null
-  const nameLower = name.toLowerCase()
+  // Normalize separators so wikilinks like [[sub/folder/file]] work on Windows.
+  const nameLower = name.toLowerCase().replace(/\\/g, '/')
   const nameWithMd = nameLower.endsWith('.md') ? nameLower : nameLower + '.md'
+  const hasPath = nameLower.includes('/')
   try {
     const entries = await readdir(dirPath, { withFileTypes: true })
     for (const entry of entries) {
@@ -994,9 +996,18 @@ async function findFileInDir(dirPath: string, name: string, depth = 0): Promise<
         const found = await findFileInDir(fullPath, name, depth + 1)
         if (found) return found
       } else if (entry.isFile()) {
-        const entryLower = entry.name.toLowerCase()
-        if (entryLower === nameLower || entryLower === nameWithMd) {
-          return fullPath
+        if (hasPath) {
+          // Path-qualified target: match when the file's full path ends with
+          // the requested sub-path (e.g. ".../10-소식/보도자료/README.md").
+          const fullLower = fullPath.toLowerCase().replace(/\\/g, '/')
+          if (fullLower.endsWith('/' + nameLower) || fullLower.endsWith('/' + nameWithMd)) {
+            return fullPath
+          }
+        } else {
+          const entryLower = entry.name.toLowerCase()
+          if (entryLower === nameLower || entryLower === nameWithMd) {
+            return fullPath
+          }
         }
       }
     }

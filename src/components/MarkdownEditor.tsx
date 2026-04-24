@@ -28,10 +28,19 @@ export default function MarkdownEditor({ tab }: Props) {
     projects,
   } = useAppStore()
 
-  const projectPath = useMemo(() =>
-    projects.find(p => tab.filePath.startsWith(p.path))?.path || '',
-    [projects, tab.filePath]
-  )
+  // Normalize path separators and casing (Windows) so that paths saved with
+  // backslashes still match paths that arrive with forward slashes, and vice
+  // versa. Without this, the file appears to be "outside any project" and
+  // cross-folder wiki-link resolution in RightPanel silently fails.
+  const projectPath = useMemo(() => {
+    const norm = (p: string) => p.replace(/\\/g, '/').toLowerCase()
+    const file = norm(tab.filePath)
+    const match = projects.find(p => {
+      const root = norm(p.path)
+      return file === root || file.startsWith(root + '/')
+    })
+    return match?.path || ''
+  }, [projects, tab.filePath])
 
   const [mdFiles, setMdFiles] = useState<{ name: string; path: string }[]>([])
   useEffect(() => {
@@ -1086,9 +1095,12 @@ function MdToolbar({ editorViewRef, onTableClick }: MdToolbarProps) {
           const filePath = useAppStore.getState().tabs.find(t => t.id === useAppStore.getState().activeTabId)?.filePath
           if (!filePath) return
           const projects = useAppStore.getState().projects
+          const norm = (s: string) => s.replace(/\\/g, '/').toLowerCase()
+          const file = norm(filePath)
           let projectRoot = ''
           for (const p of projects) {
-            if (filePath.startsWith(p.path)) { projectRoot = p.path; break }
+            const root = norm(p.path)
+            if (file === root || file.startsWith(root + '/')) { projectRoot = p.path; break }
           }
           if (!projectRoot) return
           const result = await window.electronAPI.openFolder()
