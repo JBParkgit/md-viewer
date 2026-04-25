@@ -73,19 +73,7 @@ export default function MarkdownEditor({ tab }: Props) {
     }
   }, [tab.filePath])
 
-  // Print the rendered preview. The CSS print rules in index.css hide every
-  // chrome element so only [data-print-target] (the MarkdownView container)
-  // ends up on paper. If the active layout doesn't render the preview, switch
-  // to 'preview' first so the DOM is populated before the print dialog opens.
-  const handlePrint = useCallback(() => {
-    if (layout === 'editor') {
-      setLayout('preview')
-      // Give React one tick to render the preview before opening the print dialog.
-      setTimeout(() => window.print(), 120)
-    } else {
-      window.print()
-    }
-  }, [layout])
+  // (handlePrint defined later, after the `layout` state hook is declared.)
 
   // Repo-relative path with forward slashes — needed by the version-compare
   // modal which calls `git log -- <path>` and `git show <ref>:<path>`.
@@ -188,6 +176,20 @@ export default function MarkdownEditor({ tab }: Props) {
   // isEditMode reused as: false=preview, true=split or editor
   // We store layout in local state (persists per component mount)
   const [layout, setLayout] = useState<Layout>(tab.isEditMode ? 'split' : 'preview')
+
+  // Print the rendered preview. CSS @media print rules in index.css hide every
+  // chrome element so only [data-print-target] (the MarkdownView container)
+  // ends up on paper. If the active layout doesn't render the preview, switch
+  // to 'preview' first so the DOM is populated before the print dialog opens.
+  const handlePrint = useCallback(() => {
+    if (layout === 'editor') {
+      setLayout('preview')
+      // Give React one tick to render the preview before opening the print dialog.
+      setTimeout(() => window.print(), 120)
+    } else {
+      window.print()
+    }
+  }, [layout])
 
   // Sync layout → tab.isEditMode for dirty tracking
   useEffect(() => {

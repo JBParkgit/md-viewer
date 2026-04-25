@@ -1,5 +1,13 @@
 # Changelog
 
+## 2.16.1 — 2026-04-25
+
+### 수정
+
+- **문서 열 때 "Cannot access 'layout' before initialization" 크래시 수정 (`MarkdownEditor.tsx`)** — v2.16.0 의 인쇄 핸들러 `handlePrint` 가 `layout` state 선언보다 위에 배치돼 있어 컴포넌트 첫 렌더 시 TDZ 에러로 화면이 흰색으로 나오던 문제. `handlePrint` 정의를 `const [layout, setLayout] = useState(...)` 바로 뒤로 이동.
+
+---
+
 ## 2.16.0 — 2026-04-25
 
 주요 주제: **경로 복사 / 인쇄 / Command Palette 폰트 통일**.
