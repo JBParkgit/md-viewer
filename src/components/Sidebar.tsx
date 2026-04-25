@@ -59,6 +59,8 @@ function KanbanProjectRow({ project, isActive, onClick }: KanbanProjectRowProps)
         projectName: project.name,
         commits: res.commits || [],
         files: res.files || [],
+        before: res.before,
+        after: res.after,
       })
     }
     setPullMsg(res.success ? (res.alreadyUpToDate ? '최신' : '완료') : '실패')

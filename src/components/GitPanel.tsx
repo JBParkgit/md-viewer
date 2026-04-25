@@ -265,6 +265,8 @@ export default function GitPanel() {
           projectName,
           commits: res.commits || [],
           files: res.files || [],
+          before: res.before,
+          after: res.after,
         })
         showAction(`받기 완료: 커밋 ${commitCount}개 · 파일 ${fileCount}개 변경`, 'success')
       }

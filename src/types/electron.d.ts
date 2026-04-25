@@ -105,6 +105,8 @@ export interface ElectronAPI {
     files?: { status: string; path: string }[]
     fastForward?: boolean
     alreadyUpToDate?: boolean
+    before?: string
+    after?: string
   }>
   gitPush: (cwd: string) => Promise<{ success: boolean; output?: string; error?: string }>
   gitRevert: (cwd: string, hash: string) => Promise<{ success: boolean; output?: string; error?: string }>

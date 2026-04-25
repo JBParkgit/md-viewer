@@ -1288,7 +1288,7 @@ ipcMain.handle('git:pull', async (_e, cwd: string) => {
 
   // HEAD didn't advance → nothing was pulled (already up to date).
   if (!before || !after || before === after) {
-    return { ...pullRes, alreadyUpToDate: true, commits: [], files: [] }
+    return { ...pullRes, alreadyUpToDate: true, commits: [], files: [], before, after }
   }
 
   // New commits, tab-separated to be safe with Korean/punctuated subjects.
@@ -1313,7 +1313,7 @@ ipcMain.handle('git:pull', async (_e, cwd: string) => {
     : []
 
   const fastForward = (pullRes.output || '').toLowerCase().includes('fast-forward')
-  return { ...pullRes, commits, files, fastForward, alreadyUpToDate: false }
+  return { ...pullRes, commits, files, fastForward, alreadyUpToDate: false, before, after }
 })
 
 ipcMain.handle('git:push', async (_e, cwd: string) => {

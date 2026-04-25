@@ -1,5 +1,6 @@
-import { useEffect } from 'react'
+import { useEffect, useState } from 'react'
 import { useAppStore } from '../stores/useAppStore'
+import DiffModal from './DiffModal'
 
 function statusColor(status: string): string {
   switch (status) {
@@ -26,18 +27,30 @@ function statusLabel(status: string): string {
 export default function PullResultModal() {
   const pullResult = useAppStore(s => s.pullResult)
   const setPullResult = useAppStore(s => s.setPullResult)
+  const [diffPath, setDiffPath] = useState<string | null>(null)
 
   useEffect(() => {
     if (!pullResult) return
-    const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape') setPullResult(null) }
+    const onKey = (e: KeyboardEvent) => {
+      // Esc closes whichever modal is on top — diff first, then this dialog.
+      if (e.key !== 'Escape') return
+      if (diffPath) setDiffPath(null)
+      else setPullResult(null)
+    }
     window.addEventListener('keydown', onKey)
     return () => window.removeEventListener('keydown', onKey)
-  }, [pullResult, setPullResult])
+  }, [pullResult, setPullResult, diffPath])
 
   if (!pullResult) return null
 
-  const { projectPath, projectName, commits, files } = pullResult
+  const { projectPath, projectName, commits, files, before, after } = pullResult
+  const canDiff = !!before && !!after
   const close = () => setPullResult(null)
+
+  const openDiff = (relPath: string) => {
+    if (!canDiff) return
+    setDiffPath(relPath)
+  }
 
   const openFile = (relPath: string, status: string) => {
     if (status === 'D') return
@@ -88,17 +101,30 @@ export default function PullResultModal() {
                   <div className="p-4 text-xs text-gray-400">파일 변경 없음</div>
                 )}
                 {files.map((f, i) => (
-                  <button
+                  <div
                     key={`f-${i}`}
-                    onClick={() => openFile(f.path, f.status)}
-                    disabled={f.status === 'D'}
-                    className="w-full flex items-center gap-2 px-3 py-1.5 text-xs hover:bg-blue-50 dark:hover:bg-blue-900/20 disabled:hover:bg-transparent disabled:cursor-not-allowed text-left"
-                    title={f.status === 'D' ? '삭제된 파일' : '파일 열기'}
+                    className="group flex items-center gap-1 px-1 hover:bg-blue-50 dark:hover:bg-blue-900/20"
                   >
-                    <span className={`font-mono font-bold w-4 text-center ${statusColor(f.status)}`}>{f.status}</span>
-                    <span className="flex-1 truncate text-gray-700 dark:text-gray-300">{f.path}</span>
-                    <span className="text-[10px] text-gray-400 flex-shrink-0">{statusLabel(f.status)}</span>
-                  </button>
+                    <button
+                      onClick={() => openDiff(f.path)}
+                      disabled={!canDiff}
+                      className="flex-1 flex items-center gap-2 px-2 py-1.5 text-xs disabled:cursor-not-allowed text-left min-w-0"
+                      title={canDiff ? '받기 전후 비교' : '비교 정보 없음'}
+                    >
+                      <span className={`font-mono font-bold w-4 text-center ${statusColor(f.status)}`}>{f.status}</span>
+                      <span className="flex-1 truncate text-gray-700 dark:text-gray-300">{f.path}</span>
+                      <span className="text-[10px] text-gray-400 flex-shrink-0">{statusLabel(f.status)}</span>
+                    </button>
+                    {f.status !== 'D' && (
+                      <button
+                        onClick={() => openFile(f.path, f.status)}
+                        className="opacity-0 group-hover:opacity-100 px-2 py-1 text-[10px] rounded text-gray-500 hover:bg-gray-100 dark:hover:bg-gray-700"
+                        title="파일 열기"
+                      >
+                        열기
+                      </button>
+                    )}
+                  </div>
                 ))}
               </div>
             </div>
@@ -137,7 +163,10 @@ export default function PullResultModal() {
           </div>
 
           {/* Footer */}
-          <div className="flex items-center justify-end px-4 py-2 border-t border-gray-200 dark:border-gray-700">
+          <div className="flex items-center justify-between px-4 py-2 border-t border-gray-200 dark:border-gray-700">
+            <div className="text-[11px] text-gray-400">
+              {canDiff ? '파일을 클릭하면 받기 전후 변경 내용을 볼 수 있어요.' : ''}
+            </div>
             <button
               onClick={close}
               className="px-3 py-1.5 text-xs rounded-md text-gray-600 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700"
@@ -147,6 +176,17 @@ export default function PullResultModal() {
           </div>
         </div>
       </div>
+      {diffPath && canDiff && (
+        <DiffModal
+          projectPath={projectPath}
+          relPath={diffPath}
+          leftRef={before!}
+          rightRef={after!}
+          leftLabel="받기 전"
+          rightLabel="받기 후"
+          onClose={() => setDiffPath(null)}
+        />
+      )}
     </>
   )
 }

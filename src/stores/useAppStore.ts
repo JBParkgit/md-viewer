@@ -153,6 +153,11 @@ interface AppStore {
   // the user doesn't need to open the Git tab to see what arrived.
   pullResult: PullResult | null
   setPullResult: (r: PullResult | null) => void
+
+  // Most recent pull range per project — survives closing the pull-result modal
+  // so users can revisit the diff via the file tree context menu.
+  lastPullByProject: Record<string, LastPullRange>
+  setLastPullForProject: (projectPath: string, range: LastPullRange) => void
 }
 
 export interface PullResult {
@@ -160,6 +165,18 @@ export interface PullResult {
   projectName: string
   commits: { hash: string; author: string; date: string; subject: string }[]
   files: { status: string; path: string }[]
+  before?: string
+  after?: string
+}
+
+// Per-project snapshot of the most recent successful pull's range.
+// Used by the file tree's "최근 받은 변경 보기" menu so users can revisit
+// the diff after closing the pull-result dialog.
+export interface LastPullRange {
+  before: string
+  after: string
+  files: { status: string; path: string }[]
+  at: number
 }
 
 let tabCounter = 0
@@ -824,5 +841,21 @@ export const useAppStore = create<AppStore>((set, get) => ({
 
   // ── Pull result (last Pull's changes) ────────────────────────────────────
   pullResult: null,
-  setPullResult: (r) => set({ pullResult: r }),
+  setPullResult: (r) => {
+    if (r && r.before && r.after && r.files.length > 0) {
+      set((state) => ({
+        pullResult: r,
+        lastPullByProject: {
+          ...state.lastPullByProject,
+          [r.projectPath]: { before: r.before!, after: r.after!, files: r.files, at: Date.now() },
+        },
+      }))
+    } else {
+      set({ pullResult: r })
+    }
+  },
+  lastPullByProject: {},
+  setLastPullForProject: (projectPath, range) => set((state) => ({
+    lastPullByProject: { ...state.lastPullByProject, [projectPath]: range },
+  })),
 }))

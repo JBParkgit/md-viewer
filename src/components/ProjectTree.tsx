@@ -631,6 +631,8 @@ export default function ProjectTree({ project, projectIndex, searchQuery, onOpen
                           projectName: project.name,
                           commits: res.commits || [],
                           files: res.files || [],
+                          before: res.before,
+                          after: res.after,
                         })
                         setGitActionMsg(`Pull 완료 · ${c}커밋·${f}파일`)
                       }

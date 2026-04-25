@@ -3,6 +3,7 @@ import { useAppStore } from '../stores/useAppStore'
 import { useWorkflowStore } from '../stores/useWorkflowStore'
 import { WORKFLOW_STATUS_ICONS, WORKFLOW_STATUS_COLORS } from '../utils/frontmatter'
 import FileHistoryModal from './FileHistoryModal'
+import DiffModal from './DiffModal'
 import { exportMdToPdf, exportMdToDocx, importDocxAsMd } from '../utils/exportImport'
 import { getFileGroup, FileTypeIcon } from '../utils/fileType'
 import { alert, confirm } from '../utils/dialog'
@@ -135,6 +136,8 @@ function FileRow({ node, onOpenFile, onOpenFilePinned, searchQuery, depth, proje
     }
   }, [contextMenu])
   const [showHistory, setShowHistory] = useState(false)
+  const [showRecentPullDiff, setShowRecentPullDiff] = useState(false)
+  const lastPullByProject = useAppStore(s => s.lastPullByProject)
   const [isDragOver, setIsDragOver] = useState(false)
   const [isRenaming, setIsRenaming] = useState(false)
   const [renameValue, setRenameValue] = useState('')
@@ -720,6 +723,29 @@ function FileRow({ node, onOpenFile, onOpenFilePinned, searchQuery, depth, proje
               </button>
             )}
             {(() => {
+              if (!projectPath) return null
+              const range = lastPullByProject[projectPath]
+              if (!range) return null
+              const normProject = projectPath.replace(/\\/g, '/')
+              const normNode = node.path.replace(/\\/g, '/')
+              const pfx = normProject.endsWith('/') ? normProject : normProject + '/'
+              const rel = normNode.startsWith(pfx) ? normNode.slice(pfx.length) : null
+              if (!rel) return null
+              const wasInPull = range.files.some(f => f.path === rel)
+              if (!wasInPull) return null
+              return (
+                <button
+                  onClick={() => { setContextMenu(null); setShowRecentPullDiff(true) }}
+                  className="w-full flex items-center gap-2 px-3 py-1.5 text-xs hover:bg-gray-100 dark:hover:bg-gray-700 text-left"
+                >
+                  <svg className="w-3.5 h-3.5 text-purple-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 14l-7 7m0 0l-7-7m7 7V3" />
+                  </svg>
+                  🔍 최근 받은 변경 보기
+                </button>
+              )
+            })()}
+            {(() => {
               const dot = getGitDot(node, gitStatusMap, projectPath)
               if (!dot || !projectPath) return null
               const normProject = projectPath.replace(/\\/g, '/')
@@ -856,6 +882,27 @@ function FileRow({ node, onOpenFile, onOpenFilePinned, searchQuery, depth, proje
             relativePath={rel}
             fileName={node.name}
             onClose={() => setShowHistory(false)}
+          />
+        )
+      })()}
+
+      {showRecentPullDiff && projectPath && (() => {
+        const range = lastPullByProject[projectPath]
+        if (!range) return null
+        const normProject = projectPath.replace(/\\/g, '/')
+        const normNode = node.path.replace(/\\/g, '/')
+        const pfx = normProject.endsWith('/') ? normProject : normProject + '/'
+        const rel = normNode.startsWith(pfx) ? normNode.slice(pfx.length) : null
+        if (!rel) return null
+        return (
+          <DiffModal
+            projectPath={projectPath}
+            relPath={rel}
+            leftRef={range.before}
+            rightRef={range.after}
+            leftLabel="받기 전"
+            rightLabel="받기 후"
+            onClose={() => setShowRecentPullDiff(false)}
           />
         )
       })()}
