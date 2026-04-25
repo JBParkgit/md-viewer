@@ -51,10 +51,12 @@ html, body, #root {
 
 /* ── Print: only the markdown preview body, full width, no chrome ──────── */
 /* Tagging the preview pane with `data-print-target` lets us isolate it from
- * the editor pane in split mode where two scroll containers coexist.       */
+ * the editor pane in split mode where two scroll containers coexist.
+ * Used by both window.print() AND webContents.printToPDF (preview modal). */
 @media print {
-  /* Hide every direct ancestor's siblings up to body so only the markdown
-   * body shows. Any chrome (toolbar, sidebar, tabs, status bar) is gone.  */
+  /* Hide every chrome element. visibility:hidden keeps layout intact for the
+   * print target's offsetParent calculation; the actual hidden pixels won't
+   * be in the PDF/paper output anyway. */
   body * {
     visibility: hidden !important;
   }
@@ -62,15 +64,22 @@ html, body, #root {
   [data-print-target] * {
     visibility: visible !important;
   }
+  /* Pull the preview to the top-left of the page and let it grow naturally
+   * so Chromium can paginate it across pages. position: absolute removes the
+   * element from flow so the (still-laid-out-but-invisible) chrome doesn't
+   * push it down. We deliberately omit `inset: 0` and `height` so the box
+   * height = its content height, which is what paginate needs. */
   [data-print-target] {
     position: absolute !important;
-    inset: 0 !important;
+    left: 0 !important;
+    top: 0 !important;
+    width: 100% !important;
+    height: auto !important;
     overflow: visible !important;
     background: white !important;
     color: black !important;
     padding: 0 !important;
   }
-  /* Reset any sticky positioning/headers that look weird on paper */
   [data-print-target] [data-fold-level] {
     page-break-after: avoid;
   }
@@ -79,7 +88,6 @@ html, body, #root {
   [data-print-target] img {
     page-break-inside: avoid;
   }
-  /* No scrollbar gutter; let print engine paginate naturally */
   html, body, #root {
     overflow: visible !important;
     height: auto !important;

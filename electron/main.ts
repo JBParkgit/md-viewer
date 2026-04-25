@@ -156,6 +156,38 @@ function createWindow() {
     else mainWindow.maximize()
   })
 
+  // Generate a PDF of the current page using Chromium's print engine. The
+  // renderer's @media print rules hide all chrome and pull `data-print-target`
+  // (the markdown preview) to the top-left so the PDF contains exactly what
+  // the user would see on paper. Returned as base64 because IPC serializes
+  // Buffers awkwardly with the contextBridge.
+  ipcMain.handle('printPreview:generate', async () => {
+    if (!mainWindow) return { success: false as const, error: 'No active window' }
+    try {
+      const pdf = await mainWindow.webContents.printToPDF({
+        pageSize: 'A4',
+        printBackground: true,
+        margins: { top: 0.5, bottom: 0.5, left: 0.5, right: 0.5 },
+      })
+      return { success: true as const, data: pdf.toString('base64') }
+    } catch (e) {
+      const err = e as Error
+      return { success: false as const, error: err.message || 'PDF 생성 실패' }
+    }
+  })
+
+  // Send the page (with the same @media print rules applied) directly to the
+  // OS print dialog. Called from the preview modal's "인쇄" button so users
+  // can confirm the preview matches paper before committing.
+  ipcMain.handle('printPreview:print', async () => {
+    if (!mainWindow) return { success: false as const, error: 'No active window' }
+    return new Promise<{ success: boolean; error?: string }>((resolve) => {
+      mainWindow!.webContents.print({ silent: false, printBackground: true }, (success, errorType) => {
+        resolve(success ? { success: true } : { success: false, error: errorType || '인쇄 실패' })
+      })
+    })
+  })
+
   mainWindow.on('closed', () => {
     mainWindow = null
     // Stop all watchers

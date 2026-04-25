@@ -12,6 +12,7 @@ import EditorContextMenu from './EditorContextMenu'
 import WorkflowBar from './WorkflowBar'
 import FindWidget from './FindWidget'
 import VersionTimelineModal from './VersionTimelineModal'
+import PrintPreviewModal from './PrintPreviewModal'
 
 interface Props {
   tab: Tab
@@ -59,6 +60,7 @@ export default function MarkdownEditor({ tab }: Props) {
   const [alreadySaved, setAlreadySaved] = useState(false)
   const [versionModalOpen, setVersionModalOpen] = useState(false)
   const [pathCopied, setPathCopied] = useState(false)
+  const [printPreviewOpen, setPrintPreviewOpen] = useState(false)
 
   // Copy the current document's absolute path to clipboard. Quick affordance
   // for sharing "where this file lives" with teammates over chat / email.
@@ -177,17 +179,17 @@ export default function MarkdownEditor({ tab }: Props) {
   // We store layout in local state (persists per component mount)
   const [layout, setLayout] = useState<Layout>(tab.isEditMode ? 'split' : 'preview')
 
-  // Print the rendered preview. CSS @media print rules in index.css hide every
-  // chrome element so only [data-print-target] (the MarkdownView container)
-  // ends up on paper. If the active layout doesn't render the preview, switch
-  // to 'preview' first so the DOM is populated before the print dialog opens.
+  // Open the print-preview modal. The modal generates a PDF via printToPDF
+  // (which uses the same @media print CSS as window.print) so the user sees
+  // exactly what will land on paper before committing. If the active layout
+  // doesn't have the preview in DOM, flip to 'preview' first — printToPDF
+  // captures the live page and we need data-print-target rendered.
   const handlePrint = useCallback(() => {
     if (layout === 'editor') {
       setLayout('preview')
-      // Give React one tick to render the preview before opening the print dialog.
-      setTimeout(() => window.print(), 120)
+      setTimeout(() => setPrintPreviewOpen(true), 120)
     } else {
-      window.print()
+      setPrintPreviewOpen(true)
     }
   }, [layout])
 
@@ -615,6 +617,15 @@ export default function MarkdownEditor({ tab }: Props) {
           fileName={tab.fileName}
           isDirty={tab.isDirty}
           onClose={() => setVersionModalOpen(false)}
+        />
+      )}
+
+      {/* Print preview modal — renders the print-PDF inside the app so the
+          user can review pagination/layout before sending to a printer. */}
+      {printPreviewOpen && (
+        <PrintPreviewModal
+          fileName={tab.fileName}
+          onClose={() => setPrintPreviewOpen(false)}
         />
       )}
     </div>

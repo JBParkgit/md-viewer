@@ -1,5 +1,20 @@
 # Changelog
 
+## 2.17.0 — 2026-04-25
+
+주요 주제: **인쇄 미리보기 모달 (PDF 기반)**.
+
+### 추가
+
+- **인쇄 미리보기 모달 (`PrintPreviewModal.tsx`)** — 🖨️ 인쇄 버튼 또는 `Ctrl+P` 클릭 시 더 이상 OS 인쇄 다이얼로그가 즉시 뜨지 않고, 앱 내부에서 **실제 인쇄될 PDF를 미리 보여주는 모달**이 먼저 열림. 사용자가 페이지 분할·레이아웃을 확인한 뒤 "🖨️ 인쇄" 버튼을 눌러야 OS 인쇄 다이얼로그로 넘어감. 줌 50~300% 지원, 키보드 Esc 로 닫기.
+- **`webContents.printToPDF` IPC (`electron/main.ts`)** — `printPreview:generate` 핸들러가 A4·배경 포함·기본 마진 0.5인치로 PDF 생성 후 base64 로 렌더러에 전달. `printPreview:print` 는 `webContents.print({ silent: false })` 로 OS 인쇄 다이얼로그 호출. 두 쪽 모두 동일한 `@media print` CSS 를 거치므로 미리보기 ↔ 종이 결과가 1:1 일치.
+
+### 변경
+
+- **`@media print` CSS 페이지네이션 친화 개선 (`index.css`)** — 기존 `position: absolute; inset: 0` 가 인쇄 영역을 뷰포트 크기에 가둬 PDF 첫 페이지 이후가 잘리던 문제. `width: 100%; height: auto; left: 0; top: 0` 로 바꿔 콘텐츠 자연스럽게 흐르도록 수정. Chromium 의 인쇄 엔진이 알아서 페이지 분할 처리.
+
+---
+
 ## 2.16.1 — 2026-04-25
 
 ### 수정

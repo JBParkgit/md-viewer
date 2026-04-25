@@ -123,6 +123,8 @@ export interface ElectronAPI {
   onBeforeClose: (cb: () => void) => () => void
   confirmClose: (canClose: boolean) => Promise<void>
   toggleMaximize: () => Promise<void>
+  printPreviewGenerate: () => Promise<{ success: true; data: string } | { success: false; error: string }>
+  printPreviewPrint: () => Promise<{ success: boolean; error?: string }>
 
   storeGet: (key: string) => Promise<unknown>
   storeSet: (key: string, value: unknown) => Promise<void>

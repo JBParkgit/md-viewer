@@ -110,6 +110,8 @@ contextBridge.exposeInMainWorld('electronAPI', {
   },
   confirmClose: (canClose: boolean) => ipcRenderer.invoke('app:canClose', canClose),
   toggleMaximize: () => ipcRenderer.invoke('window:toggleMaximize'),
+  printPreviewGenerate: () => ipcRenderer.invoke('printPreview:generate'),
+  printPreviewPrint: () => ipcRenderer.invoke('printPreview:print'),
 
   // Store
   storeGet: (key: string) => ipcRenderer.invoke('store:get', key),
