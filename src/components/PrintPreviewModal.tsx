@@ -25,27 +25,49 @@ export default function PrintPreviewModal({ fileName, onClose }: Props) {
   const [printing, setPrinting] = useState(false)
   const containerRef = useRef<HTMLDivElement>(null)
 
-  // Generate PDF on mount. printToPDF runs against the live DOM with our
-  // @media print rules applied, so it captures only the markdown preview.
+  // Generate PDF on mount. printToPDF captures the live DOM with our
+  // @media print rules applied, so it includes only the markdown preview.
+  // We also force light theme regardless of the user's dark-mode setting —
+  // dark text on white paper is unreadable, and Tailwind's `dark:` utility
+  // specificity makes pure-CSS overrides brittle. Removing the `dark` class
+  // for the duration of the IPC call sidesteps the issue entirely.
   useEffect(() => {
     let cancelled = false
-    window.electronAPI.printPreviewGenerate().then(res => {
+    const html = document.documentElement
+    const wasDark = html.classList.contains('dark')
+    if (wasDark) html.classList.remove('dark')
+
+    // Wait for two animation frames so the (now-light) theme is painted
+    // before printToPDF samples the DOM. Without this, the very-first capture
+    // can race with Tailwind's class-driven repaint and produce a half-dark PDF.
+    const ready = new Promise<void>(resolve => {
+      requestAnimationFrame(() => requestAnimationFrame(() => resolve()))
+    })
+
+    ready.then(() => window.electronAPI.printPreviewGenerate()).then(res => {
+      // Restore the user's theme as soon as we have the PDF in hand.
+      if (wasDark) html.classList.add('dark')
       if (cancelled) return
       if (!res.success) {
         setError(res.error || 'PDF 생성 실패')
         return
       }
-      // base64 → Uint8Array. atob is plenty fast for documents this size and
-      // avoids pulling Buffer/blob plumbing through the contextBridge.
       const bin = atob(res.data)
       const bytes = new Uint8Array(bin.length)
       for (let i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i)
       setPdfBytes(bytes)
     }).catch(e => {
+      if (wasDark) html.classList.add('dark')
       if (cancelled) return
       setError(e?.message || 'PDF 생성 실패')
     })
-    return () => { cancelled = true }
+
+    return () => {
+      cancelled = true
+      // If the user closes the modal mid-generation, make sure we leave the
+      // app in the same theme they had on entry.
+      if (wasDark && !html.classList.contains('dark')) html.classList.add('dark')
+    }
   }, [])
 
   useEffect(() => {
@@ -63,12 +85,22 @@ export default function PrintPreviewModal({ fileName, onClose }: Props) {
 
   const handlePrint = async () => {
     setPrinting(true)
-    const res = await window.electronAPI.printPreviewPrint()
-    setPrinting(false)
-    if (!res.success && res.error) {
-      // Cancelled-by-user is a normal case (errorType === 'cancelled'); don't
-      // show that as an error to the user.
-      if (!/cancel/i.test(res.error)) setError(res.error)
+    // Same light-theme dance as PDF generation: actual printing also samples
+    // the live DOM, so we briefly drop the dark class.
+    const html = document.documentElement
+    const wasDark = html.classList.contains('dark')
+    if (wasDark) html.classList.remove('dark')
+    await new Promise<void>(resolve => {
+      requestAnimationFrame(() => requestAnimationFrame(() => resolve()))
+    })
+    try {
+      const res = await window.electronAPI.printPreviewPrint()
+      if (!res.success && res.error && !/cancel/i.test(res.error)) {
+        setError(res.error)
+      }
+    } finally {
+      if (wasDark) html.classList.add('dark')
+      setPrinting(false)
     }
   }
 
