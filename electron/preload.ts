@@ -109,6 +109,7 @@ contextBridge.exposeInMainWorld('electronAPI', {
     return () => ipcRenderer.removeListener('app:beforeClose', handler)
   },
   confirmClose: (canClose: boolean) => ipcRenderer.invoke('app:canClose', canClose),
+  toggleMaximize: () => ipcRenderer.invoke('window:toggleMaximize'),
 
   // Store
   storeGet: (key: string) => ipcRenderer.invoke('store:get', key),

@@ -177,6 +177,16 @@ export default function Toolbar() {
       <div
         className="flex items-center gap-0.5 px-2 h-9 bg-gray-50 dark:bg-gray-800 border-b border-gray-200 dark:border-gray-700 flex-shrink-0 select-none"
         style={{ WebkitAppRegion: 'drag', paddingRight: '150px' } as React.CSSProperties}
+        onDoubleClick={(e) => {
+          // Only treat double-click on the bar's bare drag region as a window
+          // toggle — clicks on inner buttons/menus must not trigger maximize.
+          // Inner interactive elements set WebkitAppRegion: 'no-drag' and have
+          // their own onClick stopping propagation, but we still gate by target
+          // here in case any pass-through reaches us.
+          if (e.target === e.currentTarget) {
+            window.electronAPI.toggleMaximize()
+          }
+        }}
       >
         <span
           className="text-sm font-semibold text-blue-600 dark:text-blue-400 mr-1.5 px-1 flex-shrink-0"
@@ -235,8 +245,16 @@ export default function Toolbar() {
           <div className="fixed inset-0 z-40" onMouseDown={close} />
         )}
 
-        <div className="flex-1 flex items-center justify-center gap-1 px-3" style={{ WebkitAppRegion: 'no-drag' } as React.CSSProperties}>
-          <div className="flex items-center gap-0.5 flex-shrink-0">
+        {/* Center: nav + search palette. The wrapper itself stays drag-able
+            so the empty space around the search button can be used to move
+            the window; only the interactive children opt out via no-drag. */}
+        <div
+          className="flex-1 flex items-center justify-center gap-1 px-3"
+          onDoubleClick={(e) => {
+            if (e.target === e.currentTarget) window.electronAPI.toggleMaximize()
+          }}
+        >
+          <div className="flex items-center gap-0.5 flex-shrink-0" style={{ WebkitAppRegion: 'no-drag' } as React.CSSProperties}>
             <button
               onClick={() => dispatchNav('back')}
               disabled={!canNavBack}
@@ -261,7 +279,8 @@ export default function Toolbar() {
           <button
             onClick={openCommandPalette}
             title="전역 명령 팔레트 (Ctrl+K)"
-            className="w-full max-w-[520px] h-8 rounded-[10px] border border-gray-200 dark:border-gray-700 bg-gray-100/90 dark:bg-gray-700/70 hover:bg-gray-200/80 dark:hover:bg-gray-700 text-left px-3 flex items-center gap-2 text-sm text-gray-500 dark:text-gray-400 transition-colors"
+            className="w-full max-w-[320px] h-7 rounded-[10px] border border-gray-200 dark:border-gray-700 bg-gray-100/90 dark:bg-gray-700/70 hover:bg-gray-200/80 dark:hover:bg-gray-700 text-left px-3 flex items-center gap-2 text-xs text-gray-500 dark:text-gray-400 transition-colors"
+            style={{ WebkitAppRegion: 'no-drag' } as React.CSSProperties}
           >
             <svg className="w-3.5 h-3.5 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-4.35-4.35M10.8 18a7.2 7.2 0 100-14.4 7.2 7.2 0 000 14.4z" />

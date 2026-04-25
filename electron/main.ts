@@ -147,6 +147,15 @@ function createWindow() {
     }
   })
 
+  // Toggle maximize/restore — used by the title-bar drag region's double-click
+  // handler so users can replicate the standard Windows titlebar behavior even
+  // though we ship without a native titlebar.
+  ipcMain.handle('window:toggleMaximize', () => {
+    if (!mainWindow) return
+    if (mainWindow.isMaximized()) mainWindow.unmaximize()
+    else mainWindow.maximize()
+  })
+
   mainWindow.on('closed', () => {
     mainWindow = null
     // Stop all watchers

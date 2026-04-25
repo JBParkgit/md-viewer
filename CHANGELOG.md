@@ -1,5 +1,17 @@
 # Changelog
 
+## 2.15.1 — 2026-04-25
+
+주요 주제: **상단 검색 팔레트 축소 + 빈 영역 창 이동/더블클릭 최대화**.
+
+### 변경
+
+- **상단 검색 팔레트 축소 (`Toolbar.tsx`)** — 글로벌 Command Palette 입력 박스의 최대 너비를 520px → 320px, 높이 32px → 28px, 글자 크기 sm → xs 로 줄여 시각적 가벼움 확보. 양옆 빈 공간이 늘어나 창 이동 핸들로 활용 가능.
+- **상단 막대 빈 영역 창 드래그 (`Toolbar.tsx`)** — 검색 팔레트를 감싸던 `flex-1` 컨테이너의 `WebkitAppRegion: no-drag` 제거. 컨테이너 자체는 OS 드래그 영역(상위 컨테이너의 `drag` 상속)이 되고, 그 안의 nav 버튼·검색 버튼만 명시적으로 `no-drag` 처리. 즉 빈 영역을 마우스로 잡으면 창 이동.
+- **상단 막대 더블클릭 시 최대화/복원 토글 (`Toolbar.tsx` + `electron/main.ts`)** — 드래그 영역 더블클릭 시 `window:toggleMaximize` IPC 호출 → `mainWindow.maximize()` / `unmaximize()` 자동 전환. 표준 Windows 타이틀바 제스처와 동일.
+
+---
+
 ## 2.15.0 — 2026-04-25
 
 주요 주제: **버전 비교 타임라인 + 에디터 툴바 단순화**.
