@@ -32,6 +32,9 @@ export default function ProjectTree({ project, projectIndex, searchQuery, onOpen
   const renameProject = useAppStore(s => s.renameProject)
   const openDirsList = useAppStore(s => s.openDirs[project.id])
   const toggleOpenDirAction = useAppStore(s => s.toggleOpenDir)
+  // Last successful pull's snapshot for this specific project — drives the
+  // purple "📥 received" markers in the file tree and the re-open button.
+  const lastPullRange = useAppStore(s => s.lastPullByProject[project.path])
   const openDirs = useMemo(() => new Set(openDirsList || []), [openDirsList])
   const [nodes, setNodes] = useState<FileNode[]>([])
   const [loading, setLoading] = useState(false)
@@ -669,6 +672,32 @@ export default function ProjectTree({ project, projectIndex, searchQuery, onOpen
                   </svg>
                 </button>
               )}
+              {lastPullRange && lastPullRange.files.length > 0 && (
+                <button
+                  onClick={(e) => {
+                    e.stopPropagation()
+                    // Re-open the pull dialog from the persisted snapshot. We
+                    // don't have the original commit list anymore (only
+                    // before/after SHAs and the file changeset), but the
+                    // dialog gracefully degrades when commits[] is empty.
+                    useAppStore.getState().setPullResult({
+                      projectPath: project.path,
+                      projectName: project.name,
+                      commits: [],
+                      files: lastPullRange.files,
+                      before: lastPullRange.before,
+                      after: lastPullRange.after,
+                    })
+                  }}
+                  className="inline-flex items-center gap-0.5 px-1 h-5 rounded text-[10px] font-bold text-purple-600 dark:text-purple-400 hover:bg-purple-100 dark:hover:bg-purple-900/40"
+                  title={`최근 받은 변경 ${lastPullRange.files.length}건 다시 보기`}
+                >
+                  <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M19 14l-7 7m0 0l-7-7m7 7V3" />
+                  </svg>
+                  {lastPullRange.files.length}
+                </button>
+              )}
               <button onClick={(e) => { e.stopPropagation(); loadNodes(); loadGitStatus() }} className="w-5 h-5 flex items-center justify-center rounded hover:bg-gray-200 dark:hover:bg-gray-600" title="새로고침">
                 <svg className="w-3 h-3 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" /></svg>
               </button>
@@ -1024,7 +1053,7 @@ export default function ProjectTree({ project, projectIndex, searchQuery, onOpen
           {loading ? (
             <div className="px-6 py-2 text-xs text-gray-400">불러오는 중...</div>
           ) : (
-            <FileTree nodes={nodes} onOpenFile={onOpenFile} onOpenFilePinned={onOpenFilePinned} searchQuery={searchQuery} depth={0} projectId={project.id} openDirs={openDirs} toggleDir={toggleDir} gitStatusMap={gitStatusMap} projectPath={project.path} selection={selection} recentlyChangedPaths={recentlyChangedPaths} now={now} />
+            <FileTree nodes={nodes} onOpenFile={onOpenFile} onOpenFilePinned={onOpenFilePinned} searchQuery={searchQuery} depth={0} projectId={project.id} openDirs={openDirs} toggleDir={toggleDir} gitStatusMap={gitStatusMap} projectPath={project.path} selection={selection} recentlyChangedPaths={recentlyChangedPaths} now={now} pullRange={lastPullRange} />
           )}
         </div>
       )}

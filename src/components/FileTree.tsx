@@ -1,5 +1,5 @@
 import { useState, useRef, useMemo, useEffect, useLayoutEffect } from 'react'
-import { useAppStore } from '../stores/useAppStore'
+import { useAppStore, type LastPullRange } from '../stores/useAppStore'
 import { useWorkflowStore } from '../stores/useWorkflowStore'
 import { WORKFLOW_STATUS_ICONS, WORKFLOW_STATUS_COLORS } from '../utils/frontmatter'
 import FileHistoryModal from './FileHistoryModal'
@@ -51,6 +51,7 @@ interface FileRowProps {
   flatPaths?: string[]
   recentlyChangedPaths?: Set<string>
   now?: number
+  pullRange?: LastPullRange
 }
 
 // mtime-based "recently modified" dot for folders without Git. Shown only when
@@ -83,6 +84,44 @@ function getDirGitStatus(dirPath: string, gitStatusMap?: GitStatusMap, projectPa
   return { modified, added, deleted }
 }
 
+// Was this file part of the most recent pull's changes? Surfaces a persistent
+// "received from teammates" marker in the tree so the user can find what
+// arrived even after dismissing the pull-result dialog.
+function isFileInPullRange(node: FileNode, pullRange?: LastPullRange, projectPath?: string): { status: string; title: string } | null {
+  if (!pullRange || !projectPath) return null
+  const normProject = projectPath.replace(/\\/g, '/').replace(/\/+/g, '/')
+  const normNode = node.path.replace(/\\/g, '/').replace(/\/+/g, '/')
+  const prefix = normProject.endsWith('/') ? normProject : normProject + '/'
+  if (!normNode.startsWith(prefix)) return null
+  const rel = normNode.slice(prefix.length)
+  if (!rel) return null
+  const hit = pullRange.files.find(f => f.path === rel)
+  if (!hit) return null
+  const label = hit.status === 'M' ? '받기로 수정됨'
+    : hit.status === 'A' ? '받기로 추가됨'
+    : hit.status === 'D' ? '받기로 삭제됨'
+    : hit.status === 'R' ? '받기로 이름변경됨'
+    : '받기로 변경됨'
+  return { status: hit.status, title: label }
+}
+
+// Count of files (recursively) inside a directory that were touched by the
+// most recent pull. Lets a collapsed folder show how many of its descendants
+// were changed by the pull without expanding it.
+function getDirPullCount(dirPath: string, pullRange?: LastPullRange, projectPath?: string): number {
+  if (!pullRange || !projectPath) return 0
+  const normProject = projectPath.replace(/\\/g, '/')
+  const normDir = dirPath.replace(/\\/g, '/')
+  const projectPrefix = normProject.endsWith('/') ? normProject : normProject + '/'
+  if (!normDir.startsWith(projectPrefix)) return 0
+  const dirRel = normDir.slice(projectPrefix.length) + '/'
+  let count = 0
+  for (const f of pullRange.files) {
+    if (f.path.startsWith(dirRel)) count++
+  }
+  return count
+}
+
 function getGitDot(node: FileNode, gitStatusMap?: GitStatusMap, projectPath?: string): { color: string; letter: string; title: string } | null {
   if (!gitStatusMap || !projectPath || Object.keys(gitStatusMap).length === 0) return null
   // Normalize both paths to forward slashes for comparison
@@ -102,7 +141,7 @@ function getGitDot(node: FileNode, gitStatusMap?: GitStatusMap, projectPath?: st
   return { color: 'text-gray-500', letter: st, title: st }
 }
 
-function FileRow({ node, onOpenFile, onOpenFilePinned, searchQuery, depth, projectId, openDirs, toggleDir, gitStatusMap, projectPath, selection, flatPaths, recentlyChangedPaths, now }: FileRowProps) {
+function FileRow({ node, onOpenFile, onOpenFilePinned, searchQuery, depth, projectId, openDirs, toggleDir, gitStatusMap, projectPath, selection, flatPaths, recentlyChangedPaths, now, pullRange }: FileRowProps) {
   const controlled = openDirs !== undefined && toggleDir !== undefined
   const [localOpen, setLocalOpen] = useState(!!searchQuery)
   const open = controlled ? openDirs.has(node.path) : localOpen
@@ -430,6 +469,21 @@ function FileRow({ node, onOpenFile, onOpenFilePinned, searchQuery, depth, proje
               <span className={`text-[9px] font-bold flex-shrink-0 ${color}`} title={`변경 ${total}개 (수정 ${modified}, 추가 ${added}, 삭제 ${deleted})`}>{total}</span>
             )
           })()}
+          {(() => {
+            const pullCount = getDirPullCount(displayNode.path, pullRange, projectPath)
+            if (pullCount === 0) return null
+            return (
+              <span
+                className="inline-flex items-center gap-0.5 text-[9px] font-bold flex-shrink-0 text-purple-600 dark:text-purple-400"
+                title={`최근 받기로 이 폴더 안 ${pullCount}개 파일이 변경됨`}
+              >
+                <svg className="w-2.5 h-2.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M19 14l-7 7m0 0l-7-7m7 7V3" />
+                </svg>
+                {pullCount}
+              </span>
+            )
+          })()}
         </div>
         {open && effectiveChildren && effectiveChildren.length > 0 && (
           <div>
@@ -450,6 +504,7 @@ function FileRow({ node, onOpenFile, onOpenFilePinned, searchQuery, depth, proje
                 flatPaths={flatPaths}
                 recentlyChangedPaths={recentlyChangedPaths}
                 now={now}
+                pullRange={pullRange}
               />
             ))}
           </div>
@@ -597,6 +652,23 @@ function FileRow({ node, onOpenFile, onOpenFilePinned, searchQuery, depth, proje
             return <span className="w-1.5 h-1.5 rounded-full bg-gray-400 dark:bg-gray-500 flex-shrink-0" title={recent.title} />
           }
           return null
+        })()}
+        {(() => {
+          // "Recently received from a pull" — purple inbox-arrow distinct from
+          // git working-tree status (M/A/D), so users can tell at a glance
+          // which files arrived from teammates rather than ones they edited.
+          const pull = isFileInPullRange(node, pullRange, projectPath)
+          if (!pull) return null
+          return (
+            <span
+              className="text-purple-600 dark:text-purple-400 flex-shrink-0"
+              title={pull.title}
+            >
+              <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M19 14l-7 7m0 0l-7-7m7 7V3" />
+              </svg>
+            </span>
+          )
         })()}
       </div>
 
@@ -926,6 +998,7 @@ interface Props {
   selection?: SelectionProps
   recentlyChangedPaths?: Set<string>
   now?: number
+  pullRange?: LastPullRange
 }
 
 function collectPaths(nodes: FileNode[]): string[] {
@@ -937,7 +1010,7 @@ function collectPaths(nodes: FileNode[]): string[] {
   return result
 }
 
-export default function FileTree({ nodes, onOpenFile, onOpenFilePinned, searchQuery, depth = 0, projectId, openDirs, toggleDir, gitStatusMap, projectPath, selection, recentlyChangedPaths, now }: Props) {
+export default function FileTree({ nodes, onOpenFile, onOpenFilePinned, searchQuery, depth = 0, projectId, openDirs, toggleDir, gitStatusMap, projectPath, selection, recentlyChangedPaths, now, pullRange }: Props) {
   const flatPaths = useMemo(() => collectPaths(nodes), [nodes])
   if (nodes.length === 0) {
     return (
@@ -965,6 +1038,7 @@ export default function FileTree({ nodes, onOpenFile, onOpenFilePinned, searchQu
           flatPaths={flatPaths}
           recentlyChangedPaths={recentlyChangedPaths}
           now={now}
+          pullRange={pullRange}
         />
       ))}
     </div>
