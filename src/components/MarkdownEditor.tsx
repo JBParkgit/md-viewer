@@ -11,6 +11,7 @@ import FloatingToolbar from './FloatingToolbar'
 import EditorContextMenu from './EditorContextMenu'
 import WorkflowBar from './WorkflowBar'
 import FindWidget from './FindWidget'
+import VersionTimelineModal from './VersionTimelineModal'
 
 interface Props {
   tab: Tab
@@ -56,6 +57,17 @@ export default function MarkdownEditor({ tab }: Props) {
   const [saveError, setSaveError] = useState<string | null>(null)
   const [saveSuccess, setSaveSuccess] = useState(false)
   const [alreadySaved, setAlreadySaved] = useState(false)
+  const [versionModalOpen, setVersionModalOpen] = useState(false)
+
+  // Repo-relative path with forward slashes — needed by the version-compare
+  // modal which calls `git log -- <path>` and `git show <ref>:<path>`.
+  const relativePath = useMemo(() => {
+    if (!projectPath) return null
+    const normProject = projectPath.replace(/\\/g, '/')
+    const normFile = tab.filePath.replace(/\\/g, '/')
+    const pfx = normProject.endsWith('/') ? normProject : normProject + '/'
+    return normFile.startsWith(pfx) ? normFile.slice(pfx.length) : null
+  }, [projectPath, tab.filePath])
 
   // ── Git info for status bar ────────────────────────────────────────────
   interface GitInfo {
@@ -238,10 +250,18 @@ export default function MarkdownEditor({ tab }: Props) {
         e.preventDefault()
         insertHeading('### ')
       }
+      if ((e.ctrlKey || e.metaKey) && !e.shiftKey && !e.altKey && (e.key === 'h' || e.key === 'H')) {
+        // Only intercept when there's actually something we can show — otherwise
+        // let any default behavior pass through.
+        if (gitInfo.branch && relativePath) {
+          e.preventDefault()
+          setVersionModalOpen(true)
+        }
+      }
     }
     window.addEventListener('keydown', handler)
     return () => window.removeEventListener('keydown', handler)
-  }, [handleSave, insertHeading])
+  }, [handleSave, insertHeading, gitInfo.branch, relativePath])
 
   // ── Ctrl+F: open find widget (capture phase to preempt CodeMirror) ──────
   useEffect(() => {
@@ -272,7 +292,7 @@ export default function MarkdownEditor({ tab }: Props) {
   const layoutBtn = (l: Layout, label: string, icon: React.ReactNode) => (
     <button
       onClick={() => setLayout(l)}
-      className={`flex items-center gap-1 px-2.5 py-1 text-xs rounded transition-colors ${
+      className={`flex items-center justify-center w-8 h-7 text-xs rounded transition-colors ${
         layout === l
           ? 'bg-blue-600 text-white'
           : 'bg-white dark:bg-gray-800 text-gray-600 dark:text-gray-400 hover:bg-gray-50 dark:hover:bg-gray-700'
@@ -280,7 +300,6 @@ export default function MarkdownEditor({ tab }: Props) {
       title={label}
     >
       {icon}
-      <span className="hidden sm:inline">{label}</span>
     </button>
   )
 
@@ -321,17 +340,28 @@ export default function MarkdownEditor({ tab }: Props) {
           ))}
         </div>
 
+        {/* Version compare — disabled when current file isn't in a git repo */}
+        <button
+          onClick={() => setVersionModalOpen(true)}
+          disabled={!gitInfo.branch || !relativePath}
+          className="flex items-center justify-center w-8 h-7 text-xs rounded-md text-gray-600 dark:text-gray-300 hover:bg-gray-200 dark:hover:bg-gray-700 disabled:opacity-30 disabled:cursor-not-allowed disabled:hover:bg-transparent transition-colors"
+          title={gitInfo.branch && relativePath ? '이전 버전과 비교 (Ctrl+H)' : 'Git 저장소 안의 파일에서만 사용할 수 있어요'}
+        >
+          <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
+          </svg>
+        </button>
+
         {/* Save button */}
         <button
           onClick={() => handleSave()}
           disabled={!tab.isDirty}
-          className="flex items-center gap-1 px-3 py-1 text-xs rounded-md bg-blue-600 hover:bg-blue-700 disabled:opacity-40 text-white transition-colors"
+          className="flex items-center justify-center w-8 h-7 text-xs rounded-md bg-blue-600 hover:bg-blue-700 disabled:opacity-40 text-white transition-colors"
           title="저장 (Ctrl+S)"
         >
-          <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 7H5a2 2 0 00-2 2v9a2 2 0 002 2h14a2 2 0 002-2V9a2 2 0 00-2-2h-3m-1 4l-3 3m0 0l-3-3m3 3V4" />
           </svg>
-          저장
         </button>
       </div>
 
@@ -505,6 +535,18 @@ export default function MarkdownEditor({ tab }: Props) {
             }
           }}
           onClose={() => setShowTableEditor(false)}
+        />
+      )}
+
+      {/* Version compare modal */}
+      {versionModalOpen && projectPath && relativePath && (
+        <VersionTimelineModal
+          filePath={tab.filePath}
+          projectPath={projectPath}
+          relativePath={relativePath}
+          fileName={tab.fileName}
+          isDirty={tab.isDirty}
+          onClose={() => setVersionModalOpen(false)}
         />
       )}
     </div>
