@@ -49,6 +49,43 @@ html, body, #root {
   color: white;
 }
 
+/* ── Print: only the markdown preview body, full width, no chrome ──────── */
+/* Tagging the preview pane with `data-print-target` lets us isolate it from
+ * the editor pane in split mode where two scroll containers coexist.       */
+@media print {
+  /* Hide every direct ancestor's siblings up to body so only the markdown
+   * body shows. Any chrome (toolbar, sidebar, tabs, status bar) is gone.  */
+  body * {
+    visibility: hidden !important;
+  }
+  [data-print-target],
+  [data-print-target] * {
+    visibility: visible !important;
+  }
+  [data-print-target] {
+    position: absolute !important;
+    inset: 0 !important;
+    overflow: visible !important;
+    background: white !important;
+    color: black !important;
+    padding: 0 !important;
+  }
+  /* Reset any sticky positioning/headers that look weird on paper */
+  [data-print-target] [data-fold-level] {
+    page-break-after: avoid;
+  }
+  [data-print-target] pre,
+  [data-print-target] table,
+  [data-print-target] img {
+    page-break-inside: avoid;
+  }
+  /* No scrollbar gutter; let print engine paginate naturally */
+  html, body, #root {
+    overflow: visible !important;
+    height: auto !important;
+  }
+}
+
 /* ── Markdown View Styles ─────────────────────────────────────────────────── */
 .markdown-body {
   font-size: var(--md-font-size);

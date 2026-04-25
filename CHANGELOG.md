@@ -1,5 +1,20 @@
 # Changelog
 
+## 2.16.0 — 2026-04-25
+
+주요 주제: **경로 복사 / 인쇄 / Command Palette 폰트 통일**.
+
+### 추가
+
+- **문서 경로 복사 버튼 (`MarkdownEditor.tsx`)** — 에디터 헤더의 파일 경로 옆에 작은 클립보드 아이콘 버튼. 클릭 시 절대경로를 클립보드로 복사하고 잠깐 초록색 체크 아이콘으로 피드백. 채팅·메일에 "이 문서 어디에 있어?" 질문에 즉답 가능.
+- **미리보기 인쇄 (`MarkdownEditor.tsx` + `index.css`)** — 헤더에 🖨️ 인쇄 버튼 추가, `Ctrl+P` 단축키 동시 바인딩. 클릭 시 브라우저 인쇄 다이얼로그가 열리고 **미리보기 본문만** 종이에 나옴. `index.css` 의 `@media print` 규칙으로 툴바·사이드바·탭바 등 모든 chrome 요소를 숨기고 `[data-print-target]`(MarkdownView 컨테이너)만 노출. 현재 레이아웃이 'editor' 모드라 미리보기가 DOM에 없으면 인쇄 직전에 자동으로 'preview' 로 전환 후 인쇄.
+
+### 변경
+
+- **Command Palette 폰트/패딩 축소 (`CommandPalette.tsx`)** — 입력창과 결과 행이 다른 UI보다 큰 14px(text-sm)이라 무거워 보였던 문제. 본문 항목은 12px(text-xs), 부제목은 11px, 입력창 12px로 통일. 패딩도 px-4 py-3 → px-3 py-2 로 줄여 한 화면에 더 많은 결과가 보임.
+
+---
+
 ## 2.15.2 — 2026-04-25
 
 주요 주제: **Command Palette 가 검색 버튼 바로 아래에 열리도록 (VSCode 스타일)**.

@@ -58,6 +58,34 @@ export default function MarkdownEditor({ tab }: Props) {
   const [saveSuccess, setSaveSuccess] = useState(false)
   const [alreadySaved, setAlreadySaved] = useState(false)
   const [versionModalOpen, setVersionModalOpen] = useState(false)
+  const [pathCopied, setPathCopied] = useState(false)
+
+  // Copy the current document's absolute path to clipboard. Quick affordance
+  // for sharing "where this file lives" with teammates over chat / email.
+  const copyFilePath = useCallback(async () => {
+    try {
+      await navigator.clipboard.writeText(tab.filePath)
+      setPathCopied(true)
+      setTimeout(() => setPathCopied(false), 1500)
+    } catch {
+      // Clipboard write can fail when the window is unfocused; swallow silently
+      // — user will see no "복사됨" toast and can retry.
+    }
+  }, [tab.filePath])
+
+  // Print the rendered preview. The CSS print rules in index.css hide every
+  // chrome element so only [data-print-target] (the MarkdownView container)
+  // ends up on paper. If the active layout doesn't render the preview, switch
+  // to 'preview' first so the DOM is populated before the print dialog opens.
+  const handlePrint = useCallback(() => {
+    if (layout === 'editor') {
+      setLayout('preview')
+      // Give React one tick to render the preview before opening the print dialog.
+      setTimeout(() => window.print(), 120)
+    } else {
+      window.print()
+    }
+  }, [layout])
 
   // Repo-relative path with forward slashes — needed by the version-compare
   // modal which calls `git log -- <path>` and `git show <ref>:<path>`.
@@ -258,10 +286,16 @@ export default function MarkdownEditor({ tab }: Props) {
           setVersionModalOpen(true)
         }
       }
+      if ((e.ctrlKey || e.metaKey) && !e.shiftKey && !e.altKey && (e.key === 'p' || e.key === 'P')) {
+        // Override the browser default print so we route through the layout-
+        // aware handler (auto-switch to preview when needed).
+        e.preventDefault()
+        handlePrint()
+      }
     }
     window.addEventListener('keydown', handler)
     return () => window.removeEventListener('keydown', handler)
-  }, [handleSave, insertHeading, gitInfo.branch, relativePath])
+  }, [handleSave, insertHeading, gitInfo.branch, relativePath, handlePrint])
 
   // ── Ctrl+F: open find widget (capture phase to preempt CodeMirror) ──────
   useEffect(() => {
@@ -307,10 +341,31 @@ export default function MarkdownEditor({ tab }: Props) {
     <div className="flex flex-col h-full">
       {/* Editor header bar */}
       <div className="flex items-center gap-2 px-4 h-9 border-b border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 flex-shrink-0">
-        {/* Breadcrumb */}
-        <span className="text-xs text-gray-400 truncate flex-1" title={tab.filePath}>
-          {tab.filePath}
-        </span>
+        {/* Breadcrumb + copy-path button */}
+        <div className="flex items-center gap-1 min-w-0 flex-1">
+          <span className="text-xs text-gray-400 truncate" title={tab.filePath}>
+            {tab.filePath}
+          </span>
+          <button
+            onClick={copyFilePath}
+            title={pathCopied ? '복사됨!' : '문서 경로 복사'}
+            className={`flex items-center justify-center w-5 h-5 rounded text-[10px] flex-shrink-0 transition-colors ${
+              pathCopied
+                ? 'bg-green-100 text-green-600 dark:bg-green-900/40 dark:text-green-400'
+                : 'text-gray-400 hover:text-gray-600 dark:hover:text-gray-200 hover:bg-gray-100 dark:hover:bg-gray-700'
+            }`}
+          >
+            {pathCopied ? (
+              <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M5 13l4 4L19 7" />
+              </svg>
+            ) : (
+              <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z" />
+              </svg>
+            )}
+          </button>
+        </div>
 
         {/* Status */}
         {saveSuccess && <span className="text-xs text-green-500 font-medium">저장됨 ✓</span>}
@@ -349,6 +404,17 @@ export default function MarkdownEditor({ tab }: Props) {
         >
           <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
+          </svg>
+        </button>
+
+        {/* Print — prints the rendered preview only (chrome hidden via @media print) */}
+        <button
+          onClick={handlePrint}
+          className="flex items-center justify-center w-8 h-7 text-xs rounded-md text-gray-600 dark:text-gray-300 hover:bg-gray-200 dark:hover:bg-gray-700 transition-colors"
+          title="미리보기 인쇄 (Ctrl+P)"
+        >
+          <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 17h2a2 2 0 002-2v-4a2 2 0 00-2-2H5a2 2 0 00-2 2v4a2 2 0 002 2h2m2 4h6a2 2 0 002-2v-4a2 2 0 00-2-2H9a2 2 0 00-2 2v4a2 2 0 002 2zm8-12V5a2 2 0 00-2-2H9a2 2 0 00-2 2v4h10z" />
           </svg>
         </button>
 

@@ -521,6 +521,7 @@ export default function MarkdownView({ tab, scrollRef, lineNumbers, cursorLine, 
     <div
       ref={containerRef}
       data-md-scroll
+      data-print-target
       className="h-full overflow-y-auto bg-white dark:bg-gray-900"
       onScroll={handleScroll}
     >

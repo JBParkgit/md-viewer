@@ -350,18 +350,18 @@ export default function CommandPalette({ openFile }: Props) {
         style={panelStyle}
         onMouseDown={(e) => e.stopPropagation()}
       >
-        <div className="px-4 py-3 border-b border-gray-200 dark:border-gray-700">
+        <div className="px-3 py-2 border-b border-gray-200 dark:border-gray-700">
           <input
             ref={inputRef}
             value={query}
             onChange={(e) => setQuery(e.target.value)}
             placeholder="파일, 탭, 액션 검색..."
-            className="w-full bg-transparent text-sm text-gray-900 dark:text-gray-100 placeholder:text-gray-400 focus:outline-none"
+            className="w-full bg-transparent text-xs text-gray-900 dark:text-gray-100 placeholder:text-gray-400 focus:outline-none"
           />
         </div>
         <div className="flex-1 min-h-0 overflow-y-auto">
           {filteredItems.length === 0 ? (
-            <div className="px-4 py-6 text-sm text-gray-500 dark:text-gray-400">
+            <div className="px-3 py-4 text-xs text-gray-500 dark:text-gray-400">
               {loadingFiles ? '파일 인덱스를 불러오는 중입니다.' : '일치하는 항목이 없습니다.'}
             </div>
           ) : (
@@ -370,15 +370,15 @@ export default function CommandPalette({ openFile }: Props) {
                 key={item.id}
                 onMouseEnter={() => setSelectedIdx(idx)}
                 onClick={() => { void Promise.resolve(item.run()).finally(() => setOpen(false)) }}
-                className={`w-full text-left px-4 py-3 border-b border-gray-100 dark:border-gray-800 last:border-b-0 ${
+                className={`w-full text-left px-3 py-2 border-b border-gray-100 dark:border-gray-800 last:border-b-0 ${
                   idx === selectedIdx ? 'bg-blue-50 dark:bg-blue-900/30' : 'hover:bg-gray-50 dark:hover:bg-gray-800/80'
                 }`}
               >
                 <div className="flex items-center justify-between gap-3">
                   <div className="min-w-0">
-                    <div className="text-sm text-gray-900 dark:text-gray-100 truncate">{item.title}</div>
+                    <div className="text-xs text-gray-900 dark:text-gray-100 truncate">{item.title}</div>
                     {item.subtitle && (
-                      <div className="text-xs text-gray-500 dark:text-gray-400 truncate mt-0.5">{item.subtitle}</div>
+                      <div className="text-[11px] text-gray-500 dark:text-gray-400 truncate mt-0.5">{item.subtitle}</div>
                     )}
                   </div>
                   <span className="text-[10px] uppercase tracking-[0.12em] text-gray-400 dark:text-gray-500 flex-shrink-0">
