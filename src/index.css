@@ -49,48 +49,82 @@ html, body, #root {
   color: white;
 }
 
-/* ── Print: only the markdown preview body, full width, no chrome ──────── */
-/* Tagging the preview pane with `data-print-target` lets us isolate it from
- * the editor pane in split mode where two scroll containers coexist.
- * Used by both window.print() AND webContents.printToPDF (preview modal). */
+/* ── Print: only the markdown preview body, natural flow, light theme ──── */
+/* Strategy: use `:has()` to identify ancestors of `[data-print-target]` and
+ * neutralize their flex/sizing/overflow so the print target can flow up and
+ * paginate naturally. Hide every other element (siblings-of-ancestors).
+ * Keeping the print target in document flow (no position: absolute) makes
+ * Chromium's print engine paginate across pages correctly.            */
 @media print {
-  /* Hide every chrome element. visibility:hidden keeps layout intact for the
-   * print target's offsetParent calculation; the actual hidden pixels won't
-   * be in the PDF/paper output anyway. */
-  body * {
-    visibility: hidden !important;
-  }
-  [data-print-target],
-  [data-print-target] * {
-    visibility: visible !important;
-  }
-  /* Pull the preview to the top-left of the page and let it grow naturally
-   * so Chromium can paginate it across pages. position: absolute removes the
-   * element from flow so the (still-laid-out-but-invisible) chrome doesn't
-   * push it down. We deliberately omit `inset: 0` and `height` so the box
-   * height = its content height, which is what paginate needs. */
-  [data-print-target] {
-    position: absolute !important;
-    left: 0 !important;
-    top: 0 !important;
-    width: 100% !important;
+  /* 1) Neutralize ancestors of the print target so their flexbox / fixed
+   *    widths don't constrain the content. We need width:auto + height:auto
+   *    + overflow:visible up the chain so the paginate engine sees the full
+   *    natural content height. */
+  html:has([data-print-target]),
+  body:has([data-print-target]),
+  body :has([data-print-target]) {
+    display: block !important;
+    width: auto !important;
+    max-width: none !important;
     height: auto !important;
+    min-height: 0 !important;
+    overflow: visible !important;
+    padding: 0 !important;
+    margin: 0 !important;
+    flex: initial !important;
+    background: white !important;
+  }
+
+  /* 2) Hide everything that's neither an ancestor nor a descendant of the
+   *    print target. That removes the toolbar, sidebar, tab bar, status bar,
+   *    workflow bar, editor pane (in split mode), and any open modals. */
+  body :not(:has([data-print-target])):not([data-print-target]):not([data-print-target] *) {
+    display: none !important;
+  }
+
+  /* 3) Force the print target to natural flow with white background and let
+   *    the inner `max-w-4xl mx-auto px-8` reflect on the page as expected. */
+  [data-print-target] {
+    width: auto !important;
+    height: auto !important;
+    max-height: none !important;
     overflow: visible !important;
     background: white !important;
-    color: black !important;
     padding: 0 !important;
   }
-  [data-print-target] [data-fold-level] {
-    page-break-after: avoid;
+
+  /* 4) Force light theme inside the preview — dark mode tokens (low-contrast
+   *    grays) print as nearly invisible on white paper. We only override
+   *    text color and transparent containers; concrete backgrounds (code
+   *    blocks, blockquotes, tag pills) are kept so the syntax/structure is
+   *    still legible.  */
+  [data-print-target],
+  [data-print-target] * {
+    color: black !important;
+    /* Override Tailwind dark: text utilities */
+    --tw-text-opacity: 1 !important;
   }
+  [data-print-target] *:not(pre):not(code):not(blockquote):not(table):not(thead):not(tbody):not(tr):not(td):not(th):not(.code-block):not([class*="bg-"]) {
+    background: transparent !important;
+  }
+
+  /* 5) Page break niceties */
+  [data-print-target] [data-fold-level] { page-break-after: avoid; }
   [data-print-target] pre,
   [data-print-target] table,
-  [data-print-target] img {
+  [data-print-target] img,
+  [data-print-target] blockquote {
     page-break-inside: avoid;
   }
+
+  /* 6) Allow background colors / images (syntax highlighting blocks etc.)
+   *    to print rather than being stripped by the browser default. */
   html, body, #root {
     overflow: visible !important;
     height: auto !important;
+    background: white !important;
+    -webkit-print-color-adjust: exact !important;
+    print-color-adjust: exact !important;
   }
 }
 

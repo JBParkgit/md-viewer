@@ -1,5 +1,16 @@
 # Changelog
 
+## 2.17.1 — 2026-04-25
+
+### 수정
+
+- **인쇄 미리보기에서 본문이 오른쪽으로 치우치고, 페이지 일부가 잘리고, 다크 테마 글씨가 안 보이던 문제 (`index.css`)** — v2.17.0 의 `@media print` 규칙이 `position: absolute; width: 100%` 로 인쇄 영역을 화면 viewport 기준으로 잡아 안쪽 `mx-auto` 가 화면 가운데로 정렬됐고, A4 종이는 그 결과의 일부만 잘라 보여 한쪽으로 치우쳐 보였음. 또한 absolute 가 자연 흐름을 막아 두 번째 페이지 이후가 잘렸고, `html.dark` 에서 회색 텍스트가 그대로 인쇄돼 종이에 거의 안 보였음.
+  - `:has()` 셀렉터로 print 타겟의 조상만 골라 flex/width/height 제약을 모두 풀고, 형제(toolbar/sidebar/tab bar/...)는 `display: none`. 타겟은 자연 흐름에 두어 Chromium 인쇄 엔진이 알아서 페이지 분할.
+  - 다크 테마용 라이트 강제: `[data-print-target] *` 에 `color: black`, 비-코드 컨테이너에 `background: transparent`. 코드 블록/인용 등 의도된 배경은 보존.
+  - `print-color-adjust: exact` 로 syntax highlighting 배경도 종이에 그대로 출력되게 함.
+
+---
+
 ## 2.17.0 — 2026-04-25
 
 주요 주제: **인쇄 미리보기 모달 (PDF 기반)**.
