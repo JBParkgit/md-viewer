@@ -41,7 +41,34 @@ export default function CommandPalette({ openFile }: Props) {
   const [selectedIdx, setSelectedIdx] = useState(0)
   const [indexedFiles, setIndexedFiles] = useState<IndexedFile[]>([])
   const [loadingFiles, setLoadingFiles] = useState(false)
+  const [anchorPos, setAnchorPos] = useState<{ top: number; left: number; width: number } | null>(null)
   const inputRef = useRef<HTMLInputElement>(null)
+
+  // VSCode-style anchored placement: compute panel position from the toolbar
+  // search button's bounding rect each time the palette opens, and re-run on
+  // window resize so dragging/maximizing keeps the panel under the button.
+  useEffect(() => {
+    if (!open) { setAnchorPos(null); return }
+    const compute = () => {
+      const anchor = document.querySelector<HTMLElement>('[data-command-palette-anchor]')
+      if (!anchor) {
+        // Fallback: keep VSCode-like vertical offset, horizontally centered.
+        setAnchorPos({ top: Math.round(window.innerHeight * 0.1), left: -1, width: 600 })
+        return
+      }
+      const rect = anchor.getBoundingClientRect()
+      const desiredWidth = Math.min(720, Math.max(rect.width, 600))
+      const margin = 8
+      // Center the panel on the button, then clamp inside the viewport.
+      let left = Math.round(rect.left + rect.width / 2 - desiredWidth / 2)
+      if (left + desiredWidth + margin > window.innerWidth) left = window.innerWidth - desiredWidth - margin
+      if (left < margin) left = margin
+      setAnchorPos({ top: Math.round(rect.bottom + 4), left, width: desiredWidth })
+    }
+    compute()
+    window.addEventListener('resize', compute)
+    return () => window.removeEventListener('resize', compute)
+  }, [open])
 
   const projects = useAppStore(s => s.projects)
   const tabs = useAppStore(s => s.tabs)
@@ -304,10 +331,23 @@ export default function CommandPalette({ openFile }: Props) {
 
   if (!open) return null
 
+  // Until the anchor rect has been measured, hold the panel's render so it
+  // doesn't flash at (0,0) for one frame before the layout effect runs.
+  const panelStyle: React.CSSProperties = anchorPos
+    ? {
+        top: anchorPos.top,
+        left: anchorPos.left < 0 ? '50%' : anchorPos.left,
+        transform: anchorPos.left < 0 ? 'translateX(-50%)' : undefined,
+        width: anchorPos.width,
+        maxHeight: '70vh',
+      }
+    : { visibility: 'hidden' }
+
   return (
     <div className="fixed inset-0 z-[1100] bg-black/30 backdrop-blur-[1px]" onMouseDown={() => setOpen(false)}>
       <div
-        className="w-[min(760px,92vw)] max-h-[78vh] mx-auto mt-[10vh] rounded-2xl overflow-hidden border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 shadow-2xl"
+        className="absolute rounded-2xl overflow-hidden border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 shadow-2xl flex flex-col"
+        style={panelStyle}
         onMouseDown={(e) => e.stopPropagation()}
       >
         <div className="px-4 py-3 border-b border-gray-200 dark:border-gray-700">
@@ -319,7 +359,7 @@ export default function CommandPalette({ openFile }: Props) {
             className="w-full bg-transparent text-sm text-gray-900 dark:text-gray-100 placeholder:text-gray-400 focus:outline-none"
           />
         </div>
-        <div className="max-h-[60vh] overflow-y-auto">
+        <div className="flex-1 min-h-0 overflow-y-auto">
           {filteredItems.length === 0 ? (
             <div className="px-4 py-6 text-sm text-gray-500 dark:text-gray-400">
               {loadingFiles ? '파일 인덱스를 불러오는 중입니다.' : '일치하는 항목이 없습니다.'}

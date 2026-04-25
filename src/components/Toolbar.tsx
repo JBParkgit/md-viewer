@@ -279,6 +279,7 @@ export default function Toolbar() {
           <button
             onClick={openCommandPalette}
             title="전역 명령 팔레트 (Ctrl+K)"
+            data-command-palette-anchor
             className="w-full max-w-[320px] h-7 rounded-[10px] border border-gray-200 dark:border-gray-700 bg-gray-100/90 dark:bg-gray-700/70 hover:bg-gray-200/80 dark:hover:bg-gray-700 text-left px-3 flex items-center gap-2 text-xs text-gray-500 dark:text-gray-400 transition-colors"
             style={{ WebkitAppRegion: 'no-drag' } as React.CSSProperties}
           >

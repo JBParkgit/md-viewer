@@ -1,5 +1,15 @@
 # Changelog
 
+## 2.15.2 — 2026-04-25
+
+주요 주제: **Command Palette 가 검색 버튼 바로 아래에 열리도록 (VSCode 스타일)**.
+
+### 변경
+
+- **Command Palette 위치 변경 (`Toolbar.tsx` + `CommandPalette.tsx`)** — 기존엔 화면 중앙(`mt-[10vh] mx-auto`)에 띄웠는데, 이제는 툴바의 검색 버튼 바로 아래에 드롭다운 형태로 펼쳐짐. 툴바 검색 버튼에 `data-command-palette-anchor` 표식을 두고, 패널이 열릴 때 그 버튼의 `getBoundingClientRect()` 로 위치를 계산해 `top = rect.bottom + 4`, 가로 중심을 버튼 가운데에 맞춤. 폭은 600~720px 범위에서 자동 조정. 창 크기 변경 시 `resize` 이벤트로 재계산. 결과 리스트 영역은 `flex-1 min-h-0` 로 패널 높이에 맞춰 자동 스크롤.
+
+---
+
 ## 2.15.1 — 2026-04-25
 
 주요 주제: **상단 검색 팔레트 축소 + 빈 영역 창 이동/더블클릭 최대화**.
