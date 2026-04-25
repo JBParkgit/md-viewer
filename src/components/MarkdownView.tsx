@@ -166,12 +166,28 @@ export default function MarkdownView({ tab, scrollRef, lineNumbers, cursorLine, 
     setTimeout(() => setWikiNotFound(null), 3000)
   }, [projects, openTab])
 
-  // Preprocess [[wikilinks]] → [label](docuflow://target)
-  const processedContent = useMemo(() =>
-    stripFrontmatter(tab.content).replace(
-      /\[\[([^\]|]+)(?:\|([^\]]+))?\]\]/g,
-      (_, target, label) => `[${label || target}](docuflow://${encodeURIComponent(target.trim())})`
-    ), [tab.content])
+  // Preprocess [[wikilinks]] → [label](docuflow://target). We have to skip
+  // matches that fall inside fenced code blocks or inline code spans —
+  // otherwise documentation that quotes the wikilink syntax (e.g. a guide
+  // showing `[[유튜브-운영]]` as an example) gets silently rewritten to a
+  // URL-encoded markdown link in the rendered output.
+  const processedContent = useMemo(() => {
+    const src = stripFrontmatter(tab.content)
+    // Mask fenced (``` / ~~~) blocks first, then inline ` ... ` spans, with
+    // unique sentinel tokens. Apply wikilink replacement to the masked
+    // string, then restore the masks.
+    const tokens: string[] = []
+    const masked = src
+      .replace(/```[\s\S]*?```|~~~[\s\S]*?~~~|`[^`\n]*`/g, (m) => {
+        tokens.push(m)
+        return `WLMASK${tokens.length - 1}`
+      })
+      .replace(
+        /\[\[([^\]|]+)(?:\|([^\]]+))?\]\]/g,
+        (_, target, label) => `[${label || target}](docuflow://${encodeURIComponent(String(target).trim())})`,
+      )
+    return masked.replace(/WLMASK(\d+)/g, (_, i) => tokens[Number(i)])
+  }, [tab.content])
 
   // Wire up external scroll ref
   useEffect(() => {
