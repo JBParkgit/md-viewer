@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react'
 import { confirm } from '../utils/dialog'
+import DiffModal from './DiffModal'
 
 interface CommitEntry {
   hash: string
@@ -26,6 +27,7 @@ export default function FileHistoryModal({ filePath, projectPath, relativePath, 
   const [previewContent, setPreviewContent] = useState<string>('')
   const [previewError, setPreviewError] = useState<string | null>(null)
   const [actionState, setActionState] = useState<string | null>(null)
+  const [showDiff, setShowDiff] = useState(false)
 
   // Load commit list
   useEffect(() => {
@@ -223,6 +225,14 @@ export default function FileHistoryModal({ filePath, projectPath, relativePath, 
               닫기
             </button>
             <button
+              onClick={() => setShowDiff(true)}
+              disabled={!selectedHash || loading}
+              className="px-3 py-1.5 text-xs rounded-md bg-purple-500 hover:bg-purple-600 disabled:opacity-40 disabled:cursor-not-allowed text-white font-semibold"
+              title="선택한 시점과 현재(HEAD)를 비교"
+            >
+              🔍 현재와 비교
+            </button>
+            <button
               onClick={handleRestore}
               disabled={!selectedHash || loading}
               className="px-3 py-1.5 text-xs rounded-md bg-blue-500 hover:bg-blue-600 disabled:opacity-40 disabled:cursor-not-allowed text-white font-semibold"
@@ -232,6 +242,17 @@ export default function FileHistoryModal({ filePath, projectPath, relativePath, 
           </div>
         </div>
       </div>
+      {showDiff && selectedHash && (
+        <DiffModal
+          projectPath={projectPath}
+          relPath={relativePath}
+          leftRef={selectedHash}
+          rightRef="HEAD"
+          leftLabel={`이 시점 (${selectedHash})`}
+          rightLabel="현재 (HEAD)"
+          onClose={() => setShowDiff(false)}
+        />
+      )}
     </>
   )
 }
