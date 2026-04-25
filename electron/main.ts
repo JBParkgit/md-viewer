@@ -1383,6 +1383,16 @@ ipcMain.handle('git:fileShow', async (_e, cwd: string, hash: string, relativePat
   return gitExec(['show', `${hash}:${relativePath}`], cwd)
 })
 
+// Authors who touched a specific file between two refs (exclusive..inclusive).
+// Used by the diff view to label "이 변경은 누가 만들었는지". Returns the raw
+// newline-separated %an output; the renderer dedupes and trims.
+ipcMain.handle('git:fileAuthorsInRange', async (_e, cwd: string, fromRef: string, toRef: string, relativePath: string) => {
+  return gitExec(
+    ['log', `${fromRef}..${toRef}`, '--pretty=format:%an', '--', relativePath],
+    cwd,
+  )
+})
+
 // Restore a specific file to its state at a given commit. Stages the change.
 ipcMain.handle('git:checkoutFileAtCommit', async (_e, cwd: string, hash: string, relativePath: string) => {
   return gitExec(['checkout', hash, '--', relativePath], cwd)

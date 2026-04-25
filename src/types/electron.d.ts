@@ -112,6 +112,8 @@ export interface ElectronAPI {
   gitRevert: (cwd: string, hash: string) => Promise<{ success: boolean; output?: string; error?: string }>
   gitFileLog: (cwd: string, relativePath: string) => Promise<{ success: boolean; output?: string; error?: string }>
   gitFileShow: (cwd: string, hash: string, relativePath: string) => Promise<{ success: boolean; output?: string; error?: string }>
+  gitFileAuthorsInRange: (cwd: string, fromRef: string, toRef: string, relativePath: string) =>
+    Promise<{ success: boolean; output?: string; error?: string }>
   gitCheckoutFileAtCommit: (cwd: string, hash: string, relativePath: string) => Promise<{ success: boolean; output?: string; error?: string }>
   gitRemoteAdd: (cwd: string, url: string) => Promise<{ success: boolean; output?: string; error?: string }>
   gitRemoteGet: (cwd: string) => Promise<{ success: boolean; output?: string; error?: string }>

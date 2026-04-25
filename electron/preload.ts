@@ -94,6 +94,8 @@ contextBridge.exposeInMainWorld('electronAPI', {
   gitRevert: (cwd: string, hash: string) => ipcRenderer.invoke('git:revert', cwd, hash),
   gitFileLog: (cwd: string, relativePath: string) => ipcRenderer.invoke('git:fileLog', cwd, relativePath),
   gitFileShow: (cwd: string, hash: string, relativePath: string) => ipcRenderer.invoke('git:fileShow', cwd, hash, relativePath),
+  gitFileAuthorsInRange: (cwd: string, fromRef: string, toRef: string, relativePath: string) =>
+    ipcRenderer.invoke('git:fileAuthorsInRange', cwd, fromRef, toRef, relativePath),
   gitCheckoutFileAtCommit: (cwd: string, hash: string, relativePath: string) => ipcRenderer.invoke('git:checkoutFileAtCommit', cwd, hash, relativePath),
   gitRemoteAdd: (cwd: string, url: string) => ipcRenderer.invoke('git:remoteAdd', cwd, url),
   gitRemoteGet: (cwd: string) => ipcRenderer.invoke('git:remoteGet', cwd),

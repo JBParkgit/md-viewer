@@ -27,7 +27,7 @@ export default function FileHistoryModal({ filePath, projectPath, relativePath, 
   const [previewContent, setPreviewContent] = useState<string>('')
   const [previewError, setPreviewError] = useState<string | null>(null)
   const [actionState, setActionState] = useState<string | null>(null)
-  const [showDiff, setShowDiff] = useState(false)
+  const [diffTarget, setDiffTarget] = useState<'HEAD' | 'WORKING' | null>(null)
 
   // Load commit list
   useEffect(() => {
@@ -225,7 +225,15 @@ export default function FileHistoryModal({ filePath, projectPath, relativePath, 
               닫기
             </button>
             <button
-              onClick={() => setShowDiff(true)}
+              onClick={() => setDiffTarget('WORKING')}
+              disabled={!selectedHash || loading}
+              className="px-3 py-1.5 text-xs rounded-md bg-amber-500 hover:bg-amber-600 disabled:opacity-40 disabled:cursor-not-allowed text-white font-semibold"
+              title="선택한 시점과 작업본(현재 디스크의 파일)을 비교"
+            >
+              📝 작업본과 비교
+            </button>
+            <button
+              onClick={() => setDiffTarget('HEAD')}
               disabled={!selectedHash || loading}
               className="px-3 py-1.5 text-xs rounded-md bg-purple-500 hover:bg-purple-600 disabled:opacity-40 disabled:cursor-not-allowed text-white font-semibold"
               title="선택한 시점과 현재(HEAD)를 비교"
@@ -242,15 +250,15 @@ export default function FileHistoryModal({ filePath, projectPath, relativePath, 
           </div>
         </div>
       </div>
-      {showDiff && selectedHash && (
+      {diffTarget && selectedHash && (
         <DiffModal
           projectPath={projectPath}
           relPath={relativePath}
           leftRef={selectedHash}
-          rightRef="HEAD"
+          rightRef={diffTarget}
           leftLabel={`이 시점 (${selectedHash})`}
-          rightLabel="현재 (HEAD)"
-          onClose={() => setShowDiff(false)}
+          rightLabel={diffTarget === 'WORKING' ? '작업본 (현재 파일)' : '현재 (HEAD)'}
+          onClose={() => setDiffTarget(null)}
         />
       )}
     </>

@@ -17,12 +17,28 @@ export default function DiffModal({ projectPath, relPath, leftRef, rightRef, lef
   const [loading, setLoading] = useState(true)
   const [leftMissing, setLeftMissing] = useState(false)
   const [rightMissing, setRightMissing] = useState(false)
+  const [authors, setAuthors] = useState<string[]>([])
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape') onClose() }
     window.addEventListener('keydown', onKey)
     return () => window.removeEventListener('keydown', onKey)
   }, [onClose])
+
+  // Sentinel ref for "working copy": the actual file on disk, including any
+  // unsaved-yet-on-disk content. We can't ask git for this, so we read it
+  // directly via the existing readFile IPC.
+  const loadSide = (ref: string) => {
+    if (ref === 'WORKING') {
+      const abs = `${projectPath}/${relPath}`.replace(/\//g, '\\')
+      return window.electronAPI.readFile(abs).then(res => ({
+        success: !!res.success, output: res.success ? (res.content || '') : '',
+      }))
+    }
+    return window.electronAPI.gitFileShow(projectPath, ref, relPath).then(res => ({
+      success: !!res.success, output: res.success ? (res.output || '') : '',
+    }))
+  }
 
   useEffect(() => {
     let cancelled = false
@@ -31,18 +47,29 @@ export default function DiffModal({ projectPath, relPath, leftRef, rightRef, lef
     setRightContent(null)
     setLeftMissing(false)
     setRightMissing(false)
-    Promise.all([
-      window.electronAPI.gitFileShow(projectPath, leftRef, relPath),
-      window.electronAPI.gitFileShow(projectPath, rightRef, relPath),
-    ]).then(([l, r]) => {
+    setAuthors([])
+    // Authors only make sense when both sides are real git refs — `git log`
+    // can't include uncommitted work-tree changes. Skip the query for WORKING.
+    const authorsPromise = (leftRef !== 'WORKING' && rightRef !== 'WORKING')
+      ? window.electronAPI.gitFileAuthorsInRange(projectPath, leftRef, rightRef, relPath)
+      : Promise.resolve({ success: false, output: '' } as { success: boolean; output?: string })
+    Promise.all([loadSide(leftRef), loadSide(rightRef), authorsPromise]).then(([l, r, a]) => {
       if (cancelled) return
-      // gitFileShow fails when the file did not exist at that ref (added / deleted).
-      // Surface that as "missing" so the UI can label the side accordingly instead
-      // of showing a confusing empty pane.
-      setLeftContent(l.success ? (l.output || '') : '')
+      setLeftContent(l.success ? l.output : '')
       setLeftMissing(!l.success)
-      setRightContent(r.success ? (r.output || '') : '')
+      setRightContent(r.success ? r.output : '')
       setRightMissing(!r.success)
+      if (a.success && a.output) {
+        const seen = new Set<string>()
+        const list: string[] = []
+        for (const raw of a.output.split('\n')) {
+          const name = raw.trim()
+          if (!name || seen.has(name)) continue
+          seen.add(name)
+          list.push(name)
+        }
+        setAuthors(list)
+      }
       setLoading(false)
     }).catch(() => {
       if (cancelled) return
@@ -99,6 +126,14 @@ export default function DiffModal({ projectPath, relPath, leftRef, rightRef, lef
                   <span className="ml-2 text-orange-500">파일이 커서 정렬 없이 표시</span>
                 )}
               </div>
+              {authors.length > 0 && (
+                <div className="text-[11px] text-gray-500 dark:text-gray-400 mt-0.5 flex items-center gap-1 truncate">
+                  <svg className="w-3 h-3 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" />
+                  </svg>
+                  <span className="truncate">수정한 사람: {authors.join(', ')}</span>
+                </div>
+              )}
             </div>
             <button
               onClick={onClose}
