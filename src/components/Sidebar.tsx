@@ -4,6 +4,7 @@ import ProjectTree from './ProjectTree'
 import ImageGallery from './ImageGallery'
 import TagPanel from './TagPanel'
 import GitPanel from './GitPanel'
+import ReceivedPanel from './ReceivedPanel'
 import CalendarPanel from './CalendarPanel'
 import DocsPanel from './DocsPanel'
 import WorkflowPanel from './WorkflowPanel'
@@ -207,6 +208,18 @@ const TABS = [
     icon: (
       <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
         <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.7} d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
+      </svg>
+    ),
+  },
+  // 받기 탭은 Git 바로 앞 — 의미상 git pull 의 결과를 리뷰하는 화면이라
+  // Git 과 시각적으로 인접하면서, 일반 사용자가 Git 탭을 열지 않고도
+  // 받은 변경을 한곳에서 확인할 수 있게 한다.
+  {
+    id: 'received' as const,
+    title: '받은 변경',
+    icon: (
+      <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.7} d="M19 14l-7 7m0 0l-7-7m7 7V3" />
       </svg>
     ),
   },
@@ -686,6 +699,11 @@ export default function Sidebar({ onOpenFile, onOpenFilePinned }: Props) {
           {/* ── 캘린더 탭 ── */}
           {sidebarTab === 'calendar' && (
             <CalendarPanel onOpenFile={onOpenFile} />
+          )}
+
+          {/* ── 받은 변경 탭 ── */}
+          {sidebarTab === 'received' && (
+            <ReceivedPanel />
           )}
 
           {/* ── Git 탭 ── */}
