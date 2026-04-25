@@ -843,19 +843,22 @@ export const useAppStore = create<AppStore>((set, get) => ({
   pullResult: null,
   setPullResult: (r) => {
     if (r && r.before && r.after && r.files.length > 0) {
-      set((state) => ({
-        pullResult: r,
-        lastPullByProject: {
+      set((state) => {
+        const updated = {
           ...state.lastPullByProject,
           [r.projectPath]: { before: r.before!, after: r.after!, files: r.files, at: Date.now() },
-        },
-      }))
+        }
+        window.electronAPI.storeSet('lastPullByProject', updated)
+        return { pullResult: r, lastPullByProject: updated }
+      })
     } else {
       set({ pullResult: r })
     }
   },
   lastPullByProject: {},
-  setLastPullForProject: (projectPath, range) => set((state) => ({
-    lastPullByProject: { ...state.lastPullByProject, [projectPath]: range },
-  })),
+  setLastPullForProject: (projectPath, range) => set((state) => {
+    const updated = { ...state.lastPullByProject, [projectPath]: range }
+    window.electronAPI.storeSet('lastPullByProject', updated)
+    return { lastPullByProject: updated }
+  }),
 }))
