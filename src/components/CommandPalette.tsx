@@ -37,12 +37,17 @@ function matchScore(query: string, ...parts: Array<string | undefined>): number 
 
 export default function CommandPalette({ openFile }: Props) {
   const [open, setOpen] = useState(false)
+  // 'inline' = Word-style: no backdrop, no own input, driven by the toolbar
+  // search box. 'modal' = legacy full-overlay palette. We default to inline so
+  // any future caller of `command-palette:open` lands in the new behavior.
+  const [mode, setMode] = useState<'inline' | 'modal'>('inline')
   const [query, setQuery] = useState('')
   const [selectedIdx, setSelectedIdx] = useState(0)
   const [indexedFiles, setIndexedFiles] = useState<IndexedFile[]>([])
   const [loadingFiles, setLoadingFiles] = useState(false)
   const [anchorPos, setAnchorPos] = useState<{ top: number; left: number; width: number } | null>(null)
   const inputRef = useRef<HTMLInputElement>(null)
+  const panelRef = useRef<HTMLDivElement>(null)
 
   // VSCode-style anchored placement: compute panel position from the toolbar
   // search button's bounding rect each time the palette opens, and re-run on
@@ -89,30 +94,66 @@ export default function CommandPalette({ openFile }: Props) {
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
-      const ctrl = e.ctrlKey || e.metaKey
-      if (ctrl && !e.shiftKey && !e.altKey && (e.key === 'k' || e.key === 'K')) {
-        e.preventDefault()
-        setOpen(true)
-      } else if (e.key === 'Escape') {
+      // Esc closes either mode. Ctrl+K is handled by the toolbar (focuses the
+      // search input) so we don't double-fire here in inline mode.
+      if (e.key === 'Escape') {
         setOpen(false)
       }
     }
-    const onOpen = () => setOpen(true)
+    const onOpen = (e: Event) => {
+      const detail = (e as CustomEvent).detail as { query?: string; mode?: 'inline' | 'modal' } | undefined
+      setMode(detail?.mode ?? 'inline')
+      if (typeof detail?.query === 'string') setQuery(detail.query)
+      setOpen(true)
+    }
+    const onSetQuery = (e: Event) => {
+      const detail = (e as CustomEvent).detail as { query?: string } | undefined
+      if (typeof detail?.query === 'string') setQuery(detail.query)
+    }
+    const onClose = () => setOpen(false)
     window.addEventListener('keydown', onKey, true)
     window.addEventListener('command-palette:open', onOpen)
+    window.addEventListener('command-palette:set-query', onSetQuery)
+    window.addEventListener('command-palette:close', onClose)
     return () => {
       window.removeEventListener('keydown', onKey, true)
       window.removeEventListener('command-palette:open', onOpen)
+      window.removeEventListener('command-palette:set-query', onSetQuery)
+      window.removeEventListener('command-palette:close', onClose)
     }
   }, [])
 
+  // Notify listeners (toolbar input) so they can clear local state and unfocus.
+  useEffect(() => {
+    if (open) return
+    window.dispatchEvent(new Event('command-palette:closed'))
+  }, [open])
+
   useEffect(() => {
     if (!open) return
-    setQuery('')
     setSelectedIdx(0)
-    const t = setTimeout(() => inputRef.current?.focus(), 0)
-    return () => clearTimeout(t)
-  }, [open])
+    if (mode === 'modal') {
+      setQuery('')
+      const t = setTimeout(() => inputRef.current?.focus(), 0)
+      return () => clearTimeout(t)
+    }
+    // Inline mode: query is owned by the toolbar input, do not reset it.
+  }, [open, mode])
+
+  // Inline mode: close on outside click. The anchor (toolbar input) and the
+  // panel itself are explicitly excluded so typing/clicking inside them keeps
+  // the palette open.
+  useEffect(() => {
+    if (!open || mode !== 'inline') return
+    const onDoc = (e: MouseEvent) => {
+      const anchor = document.querySelector('[data-command-palette-anchor]')
+      if (anchor && anchor.contains(e.target as Node)) return
+      if (panelRef.current && panelRef.current.contains(e.target as Node)) return
+      setOpen(false)
+    }
+    document.addEventListener('mousedown', onDoc)
+    return () => document.removeEventListener('mousedown', onDoc)
+  }, [open, mode])
 
   useEffect(() => {
     if (!open) return
@@ -343,13 +384,14 @@ export default function CommandPalette({ openFile }: Props) {
       }
     : { visibility: 'hidden' }
 
-  return (
-    <div className="fixed inset-0 z-[1100] bg-black/30 backdrop-blur-[1px]" onMouseDown={() => setOpen(false)}>
-      <div
-        className="absolute rounded-2xl overflow-hidden border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 shadow-2xl flex flex-col"
-        style={panelStyle}
-        onMouseDown={(e) => e.stopPropagation()}
-      >
+  const panel = (
+    <div
+      ref={panelRef}
+      className={`${mode === 'inline' ? 'fixed' : 'absolute'} z-[1101] rounded-2xl overflow-hidden border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 shadow-2xl flex flex-col`}
+      style={panelStyle}
+      onMouseDown={(e) => e.stopPropagation()}
+    >
+      {mode === 'modal' && (
         <div className="px-3 py-2 border-b border-gray-200 dark:border-gray-700">
           <input
             ref={inputRef}
@@ -359,13 +401,20 @@ export default function CommandPalette({ openFile }: Props) {
             className="w-full bg-transparent text-xs text-gray-900 dark:text-gray-100 placeholder:text-gray-400 focus:outline-none"
           />
         </div>
-        <div className="flex-1 min-h-0 overflow-y-auto">
-          {filteredItems.length === 0 ? (
-            <div className="px-3 py-4 text-xs text-gray-500 dark:text-gray-400">
-              {loadingFiles ? '파일 인덱스를 불러오는 중입니다.' : '일치하는 항목이 없습니다.'}
-            </div>
-          ) : (
-            filteredItems.map((item, idx) => (
+      )}
+      <div className="flex-1 min-h-0 overflow-y-auto">
+        {filteredItems.length === 0 ? (
+          <div className="px-3 py-4 text-xs text-gray-500 dark:text-gray-400">
+            {loadingFiles ? '파일 인덱스를 불러오는 중입니다.' : '일치하는 항목이 없습니다.'}
+          </div>
+        ) : (
+          <>
+            {mode === 'inline' && !query.trim() && (
+              <div className="px-3 pt-2 pb-1 text-[10px] uppercase tracking-wide text-gray-500 dark:text-gray-400 font-semibold">
+                추천 동작
+              </div>
+            )}
+            {filteredItems.map((item, idx) => (
               <button
                 key={item.id}
                 onMouseEnter={() => setSelectedIdx(idx)}
@@ -386,13 +435,26 @@ export default function CommandPalette({ openFile }: Props) {
                   </span>
                 </div>
               </button>
-            ))
-          )}
-        </div>
-        <div className="px-4 py-2 text-[11px] text-gray-500 dark:text-gray-400 border-t border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-900/80">
-          `Ctrl+K` 열기 · `↑/↓` 이동 · `Enter` 실행 · `Esc` 닫기
-        </div>
+            ))}
+          </>
+        )}
       </div>
+      <div className="px-4 py-2 text-[11px] text-gray-500 dark:text-gray-400 border-t border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-900/80">
+        `↑/↓` 이동 · `Enter` 실행 · `Esc` 닫기
+      </div>
+    </div>
+  )
+
+  if (mode === 'inline') {
+    // No backdrop in inline mode — the toolbar input must remain interactive
+    // and the rest of the app keeps responding to hover/scroll like Word's
+    // search box.
+    return panel
+  }
+
+  return (
+    <div className="fixed inset-0 z-[1100] bg-black/30 backdrop-blur-[1px]" onMouseDown={() => setOpen(false)}>
+      {panel}
     </div>
   )
 }

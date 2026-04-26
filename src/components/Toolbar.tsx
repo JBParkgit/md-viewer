@@ -1,8 +1,18 @@
-import { useState, useEffect, useCallback } from 'react'
+import { useState, useEffect, useCallback, useRef } from 'react'
 import { useAppStore } from '../stores/useAppStore'
 import HelpModal from './HelpModal'
 import { exportMdToPdf, exportMdToDocx, importDocxAsMd } from '../utils/exportImport'
 import { alert } from '../utils/dialog'
+
+const FONT_FAMILIES: Array<{ id: string; label: string }> = [
+  { id: 'default', label: '시스템 기본' },
+  { id: 'pretendard', label: 'Pretendard' },
+  { id: 'noto-sans', label: 'Noto Sans KR' },
+  { id: 'nanumgothic', label: '나눔고딕' },
+  { id: 'nanummyeongjo', label: '나눔명조' },
+  { id: 'malgun', label: '맑은 고딕' },
+  { id: 'gulim', label: '굴림' },
+]
 
 interface MenuItem {
   label?: string
@@ -10,6 +20,10 @@ interface MenuItem {
   action?: () => void
   separator?: boolean
   checked?: boolean
+  // When set, hovering this item opens a side panel with these children
+  // instead of firing `action`. Children themselves should be leaf items
+  // (no nested submenus — we only need one level for the font picker).
+  submenu?: MenuItem[]
 }
 
 interface MenuDef {
@@ -26,15 +40,40 @@ export default function Toolbar() {
   const canNavBack = useAppStore(s => s.navIndex > 0)
   const canNavForward = useAppStore(s => s.navIndex < s.navHistory.length - 1)
   const [openIdx, setOpenIdx] = useState<number | null>(null)
+  // Index of the currently hovered submenu inside the open top-level menu —
+  // null means no submenu is expanded.
+  const [openSubIdx, setOpenSubIdx] = useState<number | null>(null)
   const [helpOpen, setHelpOpen] = useState(false)
+  const [searchValue, setSearchValue] = useState('')
+  const [searchOpen, setSearchOpen] = useState(false)
+  const searchInputRef = useRef<HTMLInputElement>(null)
 
   const dispatchNav = (direction: 'back' | 'forward') => {
     window.dispatchEvent(new CustomEvent('nav:go', { detail: { direction } }))
   }
 
-  const openCommandPalette = () => {
-    window.dispatchEvent(new Event('command-palette:open'))
-  }
+  const openInlinePalette = useCallback((initial: string = '') => {
+    setSearchOpen(true)
+    window.dispatchEvent(new CustomEvent('command-palette:open', { detail: { mode: 'inline', query: initial } }))
+  }, [])
+
+  // Keep the palette query in sync with the toolbar input (single source of
+  // truth lives in the input; the palette mirrors it for filtering).
+  useEffect(() => {
+    if (!searchOpen) return
+    window.dispatchEvent(new CustomEvent('command-palette:set-query', { detail: { query: searchValue } }))
+  }, [searchValue, searchOpen])
+
+  // Palette can close itself (Esc, outside click, item run) — reflect that
+  // in the toolbar input so the placeholder reappears.
+  useEffect(() => {
+    const onClosed = () => {
+      setSearchOpen(false)
+      setSearchValue('')
+    }
+    window.addEventListener('command-palette:closed', onClosed)
+    return () => window.removeEventListener('command-palette:closed', onClosed)
+  }, [])
 
   const handleAddProject = useCallback(async () => {
     const folder = await window.electronAPI.openFolder()
@@ -121,6 +160,14 @@ export default function Toolbar() {
         { separator: true },
         { label: '글꼴 크기 키우기', shortcut: 'Ctrl+=', action: () => setFontSize(fontSize + 1) },
         { label: '글꼴 크기 줄이기', shortcut: 'Ctrl+-', action: () => setFontSize(fontSize - 1) },
+        {
+          label: '글꼴',
+          submenu: FONT_FAMILIES.map(f => ({
+            label: f.label,
+            action: () => setFontFamily(f.id),
+            checked: fontFamily === f.id,
+          })),
+        },
       ],
     },
     {
@@ -147,7 +194,9 @@ export default function Toolbar() {
       if (!ctrl) return
       if (!e.shiftKey && !e.altKey && (e.key === 'k' || e.key === 'K')) {
         e.preventDefault()
-        openCommandPalette()
+        searchInputRef.current?.focus()
+        searchInputRef.current?.select()
+        openInlinePalette(searchInputRef.current?.value ?? '')
       } else if (e.shiftKey && e.key === 'O') {
         e.preventDefault()
         handleAddProject()
@@ -167,9 +216,13 @@ export default function Toolbar() {
     }
     window.addEventListener('keydown', handler)
     return () => window.removeEventListener('keydown', handler)
-  }, [handleAddProject, setShowTOC, setFontSize])
+  }, [handleAddProject, setShowTOC, setFontSize, openInlinePalette])
 
-  const close = () => setOpenIdx(null)
+  const close = () => { setOpenIdx(null); setOpenSubIdx(null) }
+
+  // Reset the submenu whenever the user opens a different top-level menu so
+  // a stale 글꼴 panel doesn't appear under an unrelated parent.
+  useEffect(() => { setOpenSubIdx(null) }, [openIdx])
 
   return (
     <>
@@ -214,12 +267,67 @@ export default function Toolbar() {
                   className="absolute left-0 top-full z-50 bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-600 rounded-lg shadow-xl py-1 whitespace-nowrap"
                   style={{ minWidth: 220 }}
                 >
-                  {menu.items.map((item, j) =>
-                    item.separator ? (
-                      <div key={j} className="border-t border-gray-200 dark:border-gray-700 my-1" />
-                    ) : (
+                  {menu.items.map((item, j) => {
+                    if (item.separator) {
+                      return <div key={j} className="border-t border-gray-200 dark:border-gray-700 my-1" />
+                    }
+                    if (item.submenu) {
+                      const isSubOpen = openSubIdx === j
+                      return (
+                        <div
+                          key={j}
+                          className="relative"
+                          onMouseEnter={() => setOpenSubIdx(j)}
+                        >
+                          <button
+                            onMouseDown={(e) => { e.preventDefault(); setOpenSubIdx(isSubOpen ? null : j) }}
+                            className={`w-full flex items-center justify-between px-3 py-1.5 text-xs ${
+                              isSubOpen
+                                ? 'bg-blue-500 text-white dark:bg-blue-600'
+                                : 'text-gray-700 dark:text-gray-200 hover:bg-blue-500 hover:text-white dark:hover:bg-blue-600'
+                            }`}
+                          >
+                            <span className="flex items-center gap-2">
+                              <span className="w-3.5" />
+                              {item.label}
+                            </span>
+                            <span className="text-[10px] opacity-70 ml-8">▶</span>
+                          </button>
+                          {isSubOpen && (
+                            <div
+                              className="absolute left-full top-0 -ml-px bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-600 rounded-lg shadow-xl py-1 whitespace-nowrap"
+                              style={{ minWidth: 200 }}
+                            >
+                              {item.submenu.map((sub, k) =>
+                                sub.separator ? (
+                                  <div key={k} className="border-t border-gray-200 dark:border-gray-700 my-1" />
+                                ) : (
+                                  <button
+                                    key={k}
+                                    onMouseDown={(e) => { e.preventDefault(); sub.action?.(); close() }}
+                                    className="w-full flex items-center justify-between px-3 py-1.5 text-xs text-gray-700 dark:text-gray-200 hover:bg-blue-500 hover:text-white dark:hover:bg-blue-600"
+                                  >
+                                    <span className="flex items-center gap-2">
+                                      {sub.checked !== undefined && (
+                                        <span className="w-3.5 text-center">{sub.checked ? '✓' : ''}</span>
+                                      )}
+                                      {sub.label}
+                                    </span>
+                                    {sub.shortcut && (
+                                      <span className="text-[10px] opacity-60 ml-8">{sub.shortcut}</span>
+                                    )}
+                                  </button>
+                                ),
+                              )}
+                            </div>
+                          )}
+                        </div>
+                      )
+                    }
+                    return (
                       <button
                         key={j}
+                        onMouseEnter={() => setOpenSubIdx(null)}
                         onMouseDown={(e) => { e.preventDefault(); item.action?.(); close() }}
                         className="w-full flex items-center justify-between px-3 py-1.5 text-xs text-gray-700 dark:text-gray-200 hover:bg-blue-500 hover:text-white dark:hover:bg-blue-600"
                       >
@@ -233,8 +341,8 @@ export default function Toolbar() {
                           <span className="text-[10px] opacity-60 ml-8">{item.shortcut}</span>
                         )}
                       </button>
-                    ),
-                  )}
+                    )
+                  })}
                 </div>
               )}
             </div>
@@ -276,36 +384,42 @@ export default function Toolbar() {
               </svg>
             </button>
           </div>
-          <button
-            onClick={openCommandPalette}
-            title="전역 명령 팔레트 (Ctrl+K)"
+          <div
             data-command-palette-anchor
-            className="w-full max-w-[320px] h-7 rounded-[10px] border border-gray-200 dark:border-gray-700 bg-gray-100/90 dark:bg-gray-700/70 hover:bg-gray-200/80 dark:hover:bg-gray-700 text-left px-3 flex items-center gap-2 text-xs text-gray-500 dark:text-gray-400 transition-colors"
+            className={`w-full max-w-[320px] h-7 rounded-[10px] border bg-gray-100/90 dark:bg-gray-700/70 px-3 flex items-center gap-2 text-xs transition-colors ${
+              searchOpen
+                ? 'border-blue-400 dark:border-blue-500 bg-white dark:bg-gray-800'
+                : 'border-gray-200 dark:border-gray-700 hover:bg-gray-200/80 dark:hover:bg-gray-700'
+            }`}
             style={{ WebkitAppRegion: 'no-drag' } as React.CSSProperties}
           >
-            <svg className="w-3.5 h-3.5 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <svg className="w-3.5 h-3.5 flex-shrink-0 text-gray-500 dark:text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-4.35-4.35M10.8 18a7.2 7.2 0 100-14.4 7.2 7.2 0 000 14.4z" />
             </svg>
-            <span className="truncate">Search</span>
-            <span className="ml-auto text-[11px] text-gray-400 dark:text-gray-500">Ctrl+K</span>
-          </button>
-        </div>
-
-        <div className="flex items-center flex-shrink-0" style={{ WebkitAppRegion: 'no-drag' } as React.CSSProperties}>
-          <select
-            value={fontFamily}
-            onChange={e => setFontFamily(e.target.value)}
-            className="text-xs px-1.5 py-1 rounded border border-gray-200 dark:border-gray-600 bg-white dark:bg-gray-700 text-gray-700 dark:text-gray-300 focus:outline-none cursor-pointer"
-            title="글꼴 변경"
-          >
-            <option value="default">시스템 기본</option>
-            <option value="pretendard">Pretendard</option>
-            <option value="noto-sans">Noto Sans KR</option>
-            <option value="nanumgothic">나눔고딕</option>
-            <option value="nanummyeongjo">나눔명조</option>
-            <option value="malgun">맑은 고딕</option>
-            <option value="gulim">굴림</option>
-          </select>
+            <input
+              ref={searchInputRef}
+              type="text"
+              value={searchValue}
+              placeholder="작업, 텍스트, 도움말 등을 검색해 보세요."
+              onFocus={() => openInlinePalette(searchValue)}
+              onChange={e => {
+                setSearchValue(e.target.value)
+                if (!searchOpen) openInlinePalette(e.target.value)
+              }}
+              onKeyDown={e => {
+                // Stop arrow keys from moving the input cursor — let them
+                // bubble to the palette's window listener which moves the
+                // selection. Esc / Enter keep their default bubble path so the
+                // palette's existing handler runs (close / run selected item).
+                if (e.key === 'ArrowUp' || e.key === 'ArrowDown') e.preventDefault()
+              }}
+              title="전역 명령 팔레트 (Ctrl+K)"
+              className="flex-1 min-w-0 bg-transparent text-xs text-gray-900 dark:text-gray-100 placeholder:text-gray-500 dark:placeholder:text-gray-400 focus:outline-none"
+            />
+            {!searchOpen && (
+              <span className="ml-auto text-[11px] text-gray-400 dark:text-gray-500 flex-shrink-0">Ctrl+K</span>
+            )}
+          </div>
         </div>
 
         <div className="flex items-center gap-1 flex-shrink-0" style={{ WebkitAppRegion: 'no-drag' } as React.CSSProperties}>
