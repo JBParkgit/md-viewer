@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from 'react'
 import { lineDiff, type DiffLine } from '../utils/lineDiff'
+import ReadOnlyMarkdownPreview from './ReadOnlyMarkdownPreview'
 
 interface Props {
   projectPath: string
@@ -18,6 +19,11 @@ export default function DiffModal({ projectPath, relPath, leftRef, rightRef, lef
   const [leftMissing, setLeftMissing] = useState(false)
   const [rightMissing, setRightMissing] = useState(false)
   const [authors, setAuthors] = useState<string[]>([])
+  // Diff = original line-by-line view. Preview = side-by-side rendered markdown.
+  // Only meaningful for markdown files; non-md falls back to diff-only.
+  const isMarkdown = /\.(md|markdown)$/i.test(relPath)
+  const [viewMode, setViewMode] = useState<'diff' | 'preview'>('diff')
+  const absoluteBasePath = `${projectPath}/${relPath}`
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape') onClose() }
@@ -135,6 +141,32 @@ export default function DiffModal({ projectPath, relPath, leftRef, rightRef, lef
                 </div>
               )}
             </div>
+            {isMarkdown && (
+              <div className="inline-flex rounded-md border border-gray-200 dark:border-gray-600 overflow-hidden flex-shrink-0">
+                <button
+                  onClick={() => setViewMode('diff')}
+                  className={`px-2.5 py-1 text-[11px] font-medium ${
+                    viewMode === 'diff'
+                      ? 'bg-blue-500 text-white'
+                      : 'bg-white dark:bg-gray-700 text-gray-600 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-600'
+                  }`}
+                  title="줄 단위로 변경된 부분을 비교"
+                >
+                  줄 단위 비교
+                </button>
+                <button
+                  onClick={() => setViewMode('preview')}
+                  className={`px-2.5 py-1 text-[11px] font-medium border-l border-gray-200 dark:border-gray-600 ${
+                    viewMode === 'preview'
+                      ? 'bg-blue-500 text-white'
+                      : 'bg-white dark:bg-gray-700 text-gray-600 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-600'
+                  }`}
+                  title="좌/우 양쪽을 마크다운으로 렌더링해서 비교"
+                >
+                  미리보기
+                </button>
+              </div>
+            )}
             <button
               onClick={onClose}
               className="w-7 h-7 flex items-center justify-center rounded hover:bg-gray-100 dark:hover:bg-gray-700 text-gray-500 dark:text-gray-400"
@@ -159,12 +191,26 @@ export default function DiffModal({ projectPath, relPath, leftRef, rightRef, lef
           {/* Body */}
           <div className="flex-1 overflow-auto">
             {loading && <div className="p-6 text-xs text-gray-400">불러오는 중...</div>}
-            {!loading && diff && summary && summary.added === 0 && summary.removed === 0 && (
+            {!loading && viewMode === 'diff' && diff && summary && summary.added === 0 && summary.removed === 0 && (
               <div className="p-6 text-xs text-gray-400">두 시점 사이에 변경 사항이 없습니다.</div>
             )}
-            {!loading && diff && (summary?.added || summary?.removed) ? (
+            {!loading && viewMode === 'diff' && diff && (summary?.added || summary?.removed) ? (
               <DiffSideBySide lines={diff.lines} />
             ) : null}
+            {!loading && viewMode === 'preview' && (
+              <div className="grid grid-cols-2 h-full">
+                <div className="overflow-auto border-r border-gray-200 dark:border-gray-700 px-5 py-4">
+                  {leftMissing
+                    ? <div className="text-xs text-gray-400">이 시점에는 없는 파일입니다.</div>
+                    : <ReadOnlyMarkdownPreview content={leftContent || ''} basePath={absoluteBasePath} />}
+                </div>
+                <div className="overflow-auto px-5 py-4">
+                  {rightMissing
+                    ? <div className="text-xs text-gray-400">이 시점에는 없는 파일입니다.</div>
+                    : <ReadOnlyMarkdownPreview content={rightContent || ''} basePath={absoluteBasePath} />}
+                </div>
+              </div>
+            )}
           </div>
 
           {/* Footer */}

@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react'
 import { confirm } from '../utils/dialog'
 import DiffModal from './DiffModal'
+import ReadOnlyMarkdownPreview from './ReadOnlyMarkdownPreview'
 
 interface CommitEntry {
   hash: string
@@ -28,6 +29,10 @@ export default function FileHistoryModal({ filePath, projectPath, relativePath, 
   const [previewError, setPreviewError] = useState<string | null>(null)
   const [actionState, setActionState] = useState<string | null>(null)
   const [diffTarget, setDiffTarget] = useState<'HEAD' | 'WORKING' | null>(null)
+  // Markdown files default to a rendered preview; other text files (e.g. .txt,
+  // source code) only have a meaningful raw view.
+  const isMarkdown = /\.(md|markdown)$/i.test(relativePath)
+  const [viewMode, setViewMode] = useState<'preview' | 'raw'>(isMarkdown ? 'preview' : 'raw')
 
   // Load commit list
   useEffect(() => {
@@ -185,8 +190,36 @@ export default function FileHistoryModal({ filePath, projectPath, relativePath, 
 
             {/* Preview */}
             <div className="flex-1 flex flex-col overflow-hidden">
-              <div className="px-3 py-2 text-[10px] uppercase tracking-wide text-gray-400 border-b border-gray-200 dark:border-gray-700">
-                미리보기 {selectedHash && `(${selectedHash})`}
+              <div className="flex items-center justify-between px-3 py-1.5 border-b border-gray-200 dark:border-gray-700">
+                <span className="text-[10px] uppercase tracking-wide text-gray-400">
+                  미리보기 {selectedHash && `(${selectedHash})`}
+                </span>
+                {isMarkdown && (
+                  <div className="inline-flex rounded-md border border-gray-200 dark:border-gray-600 overflow-hidden">
+                    <button
+                      onClick={() => setViewMode('preview')}
+                      className={`px-2 py-0.5 text-[10px] font-medium ${
+                        viewMode === 'preview'
+                          ? 'bg-blue-500 text-white'
+                          : 'bg-white dark:bg-gray-700 text-gray-600 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-600'
+                      }`}
+                      title="마크다운으로 렌더링해서 보기"
+                    >
+                      미리보기
+                    </button>
+                    <button
+                      onClick={() => setViewMode('raw')}
+                      className={`px-2 py-0.5 text-[10px] font-medium border-l border-gray-200 dark:border-gray-600 ${
+                        viewMode === 'raw'
+                          ? 'bg-blue-500 text-white'
+                          : 'bg-white dark:bg-gray-700 text-gray-600 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-600'
+                      }`}
+                      title="원본 텍스트 그대로 보기"
+                    >
+                      원문
+                    </button>
+                  </div>
+                )}
               </div>
               <div className="flex-1 overflow-auto">
                 {previewLoading && (
@@ -198,7 +231,12 @@ export default function FileHistoryModal({ filePath, projectPath, relativePath, 
                 {previewError && (
                   <div className="p-4 text-xs text-red-500">{previewError}</div>
                 )}
-                {!previewLoading && !previewError && previewContent && (
+                {!previewLoading && !previewError && previewContent && viewMode === 'preview' && isMarkdown && (
+                  <div className="px-6 py-4">
+                    <ReadOnlyMarkdownPreview content={previewContent} basePath={filePath} />
+                  </div>
+                )}
+                {!previewLoading && !previewError && previewContent && (viewMode === 'raw' || !isMarkdown) && (
                   <pre className="p-4 text-xs font-mono text-gray-800 dark:text-gray-200 whitespace-pre-wrap break-words">
                     {previewContent}
                   </pre>
