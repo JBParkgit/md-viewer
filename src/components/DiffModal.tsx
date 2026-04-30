@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react'
+import { Fragment, useEffect, useMemo, useState } from 'react'
 import { lineDiff, type DiffLine } from '../utils/lineDiff'
 import ReadOnlyMarkdownPreview from './ReadOnlyMarkdownPreview'
 
@@ -277,46 +277,47 @@ function buildRows(lines: DiffLine[]): Row[] {
   return rows
 }
 
+// CSS Grid (`1fr 1fr` for the two content columns) guarantees the two content
+// cells are always exactly the same width, regardless of body width or whether
+// the vertical scrollbar is present. A `<table>` with percentage widths drifts
+// by sub-pixels when the scrollbar toggles, which makes identical long lines
+// (e.g. URLs in frontmatter) wrap at slightly different points and breaks
+// row-by-row alignment between the left and right sides.
 function DiffSideBySide({ lines }: { lines: DiffLine[] }) {
   const rows = useMemo(() => buildRows(lines), [lines])
   return (
-    <table className="w-full border-collapse font-mono text-[12px] leading-snug">
-      <colgroup>
-        <col style={{ width: '3rem' }} />
-        <col style={{ width: '50%' }} />
-        <col style={{ width: '3rem' }} />
-        <col style={{ width: '50%' }} />
-      </colgroup>
-      <tbody>
-        {rows.map((r, idx) => {
-          const leftBg =
-            r.leftKind === 'delete' ? 'bg-red-50 dark:bg-red-900/20'
-            : r.leftKind === 'empty' ? 'bg-gray-50 dark:bg-gray-900/40'
-            : ''
-          const rightBg =
-            r.rightKind === 'insert' ? 'bg-green-50 dark:bg-green-900/20'
-            : r.rightKind === 'empty' ? 'bg-gray-50 dark:bg-gray-900/40'
-            : ''
-          const leftTextColor = r.leftKind === 'delete' ? 'text-red-700 dark:text-red-300' : 'text-gray-800 dark:text-gray-200'
-          const rightTextColor = r.rightKind === 'insert' ? 'text-green-700 dark:text-green-300' : 'text-gray-800 dark:text-gray-200'
-          return (
-            <tr key={idx}>
-              <td className={`px-2 py-0.5 text-right text-gray-400 select-none border-r border-gray-200 dark:border-gray-700 align-top ${leftBg}`}>
-                {r.leftNo ?? ''}
-              </td>
-              <td className={`px-2 py-0.5 whitespace-pre-wrap break-words align-top ${leftBg} ${leftTextColor}`}>
-                {r.leftText || (r.leftKind === 'empty' ? ' ' : '')}
-              </td>
-              <td className={`px-2 py-0.5 text-right text-gray-400 select-none border-l border-r border-gray-200 dark:border-gray-700 align-top ${rightBg}`}>
-                {r.rightNo ?? ''}
-              </td>
-              <td className={`px-2 py-0.5 whitespace-pre-wrap break-words align-top ${rightBg} ${rightTextColor}`}>
-                {r.rightText || (r.rightKind === 'empty' ? ' ' : '')}
-              </td>
-            </tr>
-          )
-        })}
-      </tbody>
-    </table>
+    <div
+      className="font-mono text-[12px] leading-snug grid"
+      style={{ gridTemplateColumns: '3rem minmax(0,1fr) 3rem minmax(0,1fr)' }}
+    >
+      {rows.map((r, idx) => {
+        const leftBg =
+          r.leftKind === 'delete' ? 'bg-red-50 dark:bg-red-900/20'
+          : r.leftKind === 'empty' ? 'bg-gray-50 dark:bg-gray-900/40'
+          : ''
+        const rightBg =
+          r.rightKind === 'insert' ? 'bg-green-50 dark:bg-green-900/20'
+          : r.rightKind === 'empty' ? 'bg-gray-50 dark:bg-gray-900/40'
+          : ''
+        const leftTextColor = r.leftKind === 'delete' ? 'text-red-700 dark:text-red-300' : 'text-gray-800 dark:text-gray-200'
+        const rightTextColor = r.rightKind === 'insert' ? 'text-green-700 dark:text-green-300' : 'text-gray-800 dark:text-gray-200'
+        return (
+          <Fragment key={idx}>
+            <div className={`px-2 py-0.5 text-right text-gray-400 select-none border-r border-gray-200 dark:border-gray-700 ${leftBg}`}>
+              {r.leftNo ?? ''}
+            </div>
+            <div className={`px-2 py-0.5 whitespace-pre-wrap break-words ${leftBg} ${leftTextColor}`}>
+              {r.leftText || (r.leftKind === 'empty' ? ' ' : '')}
+            </div>
+            <div className={`px-2 py-0.5 text-right text-gray-400 select-none border-l border-r border-gray-200 dark:border-gray-700 ${rightBg}`}>
+              {r.rightNo ?? ''}
+            </div>
+            <div className={`px-2 py-0.5 whitespace-pre-wrap break-words ${rightBg} ${rightTextColor}`}>
+              {r.rightText || (r.rightKind === 'empty' ? ' ' : '')}
+            </div>
+          </Fragment>
+        )
+      })}
+    </div>
   )
 }
