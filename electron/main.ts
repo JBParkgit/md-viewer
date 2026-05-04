@@ -661,10 +661,27 @@ async function detectIDEs(): Promise<{ id: string; name: string; cmd: string }[]
   const results: { id: string; name: string; cmd: string }[] = []
   for (const ide of IDE_LIST) {
     try {
-      await new Promise<void>((resolve, reject) => {
-        execFile(which, [ide.cmd], (err) => err ? reject(err) : resolve())
+      // Capture the full resolved path. On Windows VS Code/Cursor/Windsurf/
+      // Antigravity install as `code.cmd` etc., and spawning by bare name
+      // depends on whatever PATH Electron inherited at launch — using the
+      // absolute path is more reliable.
+      const fullPath = await new Promise<string>((resolve, reject) => {
+        execFile(which, [ide.cmd], (err, stdout) => {
+          if (err) return reject(err)
+          const lines = stdout.split(/\r?\n/).map(s => s.trim()).filter(Boolean)
+          if (process.platform === 'win32') {
+            // VS Code / Cursor / Windsurf / Antigravity ship both a Bash
+            // shim (no extension) and a Windows shim (`.cmd` / `.exe`).
+            // Prefer the Windows-runnable one — Node's `spawn` can't execute
+            // an extensionless Bash script on Windows.
+            const winRunnable = lines.find(p => /\.(cmd|bat|exe)$/i.test(p))
+            resolve(winRunnable || lines[0] || ide.cmd)
+          } else {
+            resolve(lines[0] || ide.cmd)
+          }
+        })
       })
-      results.push(ide)
+      results.push({ ...ide, cmd: fullPath })
     } catch { /* not installed */ }
   }
   detectedIDEs = results
@@ -675,9 +692,46 @@ ipcMain.handle('shell:detectIDEs', async () => {
   return detectIDEs()
 })
 
-ipcMain.handle('shell:openInIDE', async (_e, ideCmd: string, dirPath: string) => {
-  const { exec } = require('child_process')
-  exec(`"${ideCmd}" "${dirPath}"`)
+ipcMain.handle('shell:openInIDE', async (_e, ideCmd: string, dirPath: string): Promise<{ success: boolean; error?: string }> => {
+  const { spawn } = require('child_process')
+  // On Windows the resolved path often ends in `.cmd` (VS Code, Cursor,
+  // Windsurf, Antigravity all ship a .cmd shim). Node's `spawn` cannot run
+  // .cmd/.bat directly without shell — set shell:true on Windows.
+  //
+  // Important: when shell:true on Windows, Node auto-quotes the *args* but
+  // NOT the command. VS Code's default install path is
+  // `C:\Users\…\Programs\Microsoft VS Code\bin\code.cmd` — the embedded
+  // space in "Microsoft VS Code" makes cmd.exe parse the command as just
+  // `C:\Users\…\Programs\Microsoft` and fail. Wrap the command in quotes
+  // ourselves to keep it a single token.
+  const quotedCmd = process.platform === 'win32' ? `"${ideCmd}"` : ideCmd
+  return new Promise((resolve) => {
+    try {
+      const child = spawn(quotedCmd, [dirPath], {
+        detached: true,
+        stdio: 'ignore',
+        shell: process.platform === 'win32',
+        windowsHide: true,
+      })
+      let settled = false
+      child.on('error', (err: Error) => {
+        if (settled) return
+        settled = true
+        console.error('[openInIDE] spawn error:', err)
+        resolve({ success: false, error: err.message })
+      })
+      child.on('spawn', () => {
+        if (settled) return
+        settled = true
+        child.unref()
+        resolve({ success: true })
+      })
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : String(err)
+      console.error('[openInIDE] threw:', msg)
+      resolve({ success: false, error: msg })
+    }
+  })
 })
 
 // ── IPC: Detect Claude Code CLI ─────────────────────────────────────────────

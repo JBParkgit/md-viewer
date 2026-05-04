@@ -73,7 +73,7 @@ export interface ElectronAPI {
   showItemInFolder: (path: string) => Promise<void>
   openTerminal: (path: string) => Promise<void>
   detectIDEs: () => Promise<{ id: string; name: string; cmd: string }[]>
-  openInIDE: (ideCmd: string, dirPath: string) => Promise<void>
+  openInIDE: (ideCmd: string, dirPath: string) => Promise<{ success: boolean; error?: string }>
   detectClaude: () => Promise<boolean>
   openClaude: (dirPath: string, skipPerms: boolean) => Promise<void>
   detectCodex: () => Promise<boolean>

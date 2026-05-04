@@ -1138,7 +1138,13 @@ export default function ProjectTree({ project, projectIndex, searchQuery, onOpen
             {installedIDEs.map(ide => (
               <button
                 key={ide.id}
-                onClick={() => { window.electronAPI.openInIDE(ide.cmd, project.path); setContextMenu(null) }}
+                onClick={async () => {
+                  setContextMenu(null)
+                  const res = await window.electronAPI.openInIDE(ide.cmd, project.path)
+                  if (!res.success) {
+                    alert(`${ide.name}로 열기에 실패했습니다.\n${res.error || '알 수 없는 오류'}`)
+                  }
+                }}
                 className="w-full flex items-center gap-2 px-3 py-1.5 text-xs hover:bg-gray-100 dark:hover:bg-gray-700 text-left"
               >
                 <svg className="w-3.5 h-3.5 text-purple-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">

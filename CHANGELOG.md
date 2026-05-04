@@ -1,5 +1,20 @@
 # Changelog
 
+## 2.22.1 — 2026-05-04
+
+### 수정
+
+- **VS Code 로 열기가 동작하지 않던 문제 (`electron/main.ts`, `electron/preload.ts`, `src/types/electron.d.ts`, `src/components/ProjectTree.tsx`)** — 프로젝트 우클릭 → "VS Code 로 열기" 가 아무 반응 없이 실패. Cursor / Antigravity 는 정상.
+  - 원인 1: VS Code 의 기본 설치 경로 `C:\Users\…\Programs\Microsoft VS Code\bin\code.cmd` 는 `Microsoft VS Code` 부분에 공백이 있는데, Node 의 `spawn(cmd, args, { shell: true })` 는 *인자*만 자동으로 따옴표 처리하고 *명령 경로*는 그대로 셸에 넘김. 그 결과 `cmd.exe` 가 경로를 공백에서 끊어 `C:\Users\…\Programs\Microsoft` 를 실행하려다 실패. Cursor·Antigravity 의 기본 설치 경로엔 공백이 없어 운 좋게 동작했음.
+  - 원인 2: `where code` 는 VS Code 의 Bash 셸 스크립트(`code`, 확장자 없음)와 Windows `.cmd` 셔임을 함께 반환하는데, 기존 코드는 첫 줄을 그대로 사용해 Windows 에서 실행 불가능한 Bash 스크립트가 잡히는 경우가 있었음.
+  - 원인 3: 실행 실패가 사용자에게 전혀 보이지 않음 (`exec` 의 에러 콜백 미사용).
+  - 수정:
+    1. `detectIDEs` 가 `where` 결과 중 `.cmd`/`.exe`/`.bat` 처럼 Windows 에서 실행 가능한 경로를 우선 선택하고 **전체 경로**로 저장.
+    2. `shell:openInIDE` 를 `exec` → `spawn(shell:true)` 로 교체하면서 명령 경로를 직접 따옴표로 감싸 공백 있는 설치 경로도 한 토큰으로 유지.
+    3. 실행 결과를 `{ success, error }` 로 반환해, 실패하면 사이드바에서 `alert` 로 사유를 노출.
+
+---
+
 ## 2.22.0 — 2026-05-04
 
 ### 추가
