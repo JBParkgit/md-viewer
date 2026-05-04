@@ -358,22 +358,55 @@ html, body, #root {
 }
 
 .markdown-body table {
-  border-collapse: collapse;
+  border-collapse: separate;
+  border-spacing: 0;
   width: 100%;
   margin: 1em 0;
   font-size: 0.95em;
+  border: 1px solid #d1d5db;
+  border-radius: 8px;
 }
 
 .markdown-body th,
 .markdown-body td {
-  border: 1px solid #d1d5db;
+  border-right: 1px solid #d1d5db;
+  border-bottom: 1px solid #d1d5db;
   padding: 0.6em 1em;
   text-align: left;
+}
+
+.markdown-body th:last-child,
+.markdown-body td:last-child {
+  border-right: none;
+}
+
+.markdown-body tr:last-child td {
+  border-bottom: none;
 }
 
 .markdown-body th {
   background: #f9fafb;
   font-weight: 600;
+}
+
+/* Round corner cells so header background doesn't square off the radius */
+.markdown-body table tr:first-child th:first-child,
+.markdown-body table tr:first-child td:first-child {
+  border-top-left-radius: 8px;
+}
+.markdown-body table tr:first-child th:last-child,
+.markdown-body table tr:first-child td:last-child {
+  border-top-right-radius: 8px;
+}
+.markdown-body table tr:last-child td:first-child {
+  border-bottom-left-radius: 8px;
+}
+.markdown-body table tr:last-child td:last-child {
+  border-bottom-right-radius: 8px;
+}
+
+.dark .markdown-body table {
+  border-color: #4b5563;
 }
 
 .dark .markdown-body th {

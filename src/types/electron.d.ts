@@ -76,6 +76,8 @@ export interface ElectronAPI {
   openInIDE: (ideCmd: string, dirPath: string) => Promise<void>
   detectClaude: () => Promise<boolean>
   openClaude: (dirPath: string, skipPerms: boolean) => Promise<void>
+  detectCodex: () => Promise<boolean>
+  openCodex: (dirPath: string, fullAuto: boolean) => Promise<void>
   saveAs: (defaultPath: string, filters: { name: string; extensions: string[] }[]) => Promise<string | null>
   exportPdf: (srcMdPath: string, destPath: string) => Promise<{ success: boolean; error?: string }>
   exportDocx: (srcMdPath: string, destPath: string) => Promise<{ success: boolean; error?: string }>

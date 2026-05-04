@@ -1,5 +1,19 @@
 # Changelog
 
+## 2.22.0 — 2026-05-04
+
+### 추가
+
+- **프로젝트 우클릭 메뉴에 Codex 실행 항목 (`ProjectTree.tsx`, `electron/main.ts`, `electron/preload.ts`)** — 기존 Claude Code 항목과 동일한 패턴으로 "Codex 실행" / "Codex 실행 (자동 승인)" 두 항목을 추가. 두 번째 항목은 `--ask-for-approval never --sandbox workspace-write` 조합으로 실행하여 모든 단계를 자동 승인하면서 워크스페이스 범위 쓰기 샌드박스는 유지함 (codex 0.128 에서 제거된 `--full-auto` 단축 플래그의 동등 대체).
+  - PATH 에 `codex` 가 있을 때만 메뉴에 노출 (`detectCodex` IPC).
+  - Windows 는 wt → cmd, macOS 는 Terminal.app, Linux 는 `x-terminal-emulator` 로 새 터미널을 띄워 TTY 를 확보.
+
+### 변경
+
+- **마크다운 테이블 둥근 모서리 (`src/index.css`)** — `.markdown-body table` 의 외곽선을 컨테이너 `<table>` 에 두고 `border-radius: 8px` 적용, 내부 셀은 우/하 보더만 그어 테두리 중복을 제거. 다크모드도 같이 색을 맞춤.
+
+---
+
 ## 2.21.1 — 2026-04-30
 
 ### 수정

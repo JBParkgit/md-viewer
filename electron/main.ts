@@ -741,6 +741,51 @@ ipcMain.handle('shell:openClaude', async (_e, dirPath: string, skipPerms: boolea
   }
 })
 
+// ── IPC: Detect Codex CLI ───────────────────────────────────────────────────
+let detectedCodex: boolean | null = null
+
+async function detectCodex(): Promise<boolean> {
+  if (detectedCodex !== null) return detectedCodex
+  const which = process.platform === 'win32' ? 'where' : 'which'
+  try {
+    await new Promise<void>((resolve, reject) => {
+      execFile(which, ['codex'], (err) => err ? reject(err) : resolve())
+    })
+    detectedCodex = true
+  } catch {
+    detectedCodex = false
+  }
+  return detectedCodex
+}
+
+ipcMain.handle('shell:detectCodex', async () => {
+  return detectCodex()
+})
+
+// Open a new terminal in `dirPath` and start `codex` (optionally in "full-auto"
+// mode). Same TTY rationale as openClaude — must spawn a real terminal.
+//
+// codex 0.128+ removed the `--full-auto` shortcut. The modern equivalent is
+// `--ask-for-approval never --sandbox workspace-write` (auto-approve every
+// step, but still sandbox writes to the workspace).
+ipcMain.handle('shell:openCodex', async (_e, dirPath: string, fullAuto: boolean) => {
+  const { exec } = require('child_process')
+  const flag = fullAuto ? ' --ask-for-approval never --sandbox workspace-write' : ''
+  if (process.platform === 'win32') {
+    const hasWT = await detectWindowsTerminal()
+    if (hasWT) {
+      exec(`wt -d "${dirPath}" cmd /k "codex${flag}"`)
+    } else {
+      exec(`start cmd /k "cd /d "${dirPath}" && codex${flag}"`)
+    }
+  } else if (process.platform === 'darwin') {
+    const script = `tell application "Terminal" to do script "cd ${JSON.stringify(dirPath)}; codex${flag}"`
+    exec(`osascript -e ${JSON.stringify(script)}`)
+  } else {
+    exec(`x-terminal-emulator -e bash -c 'cd "${dirPath}"; codex${flag}; exec bash'`)
+  }
+})
+
 // ── IPC: Open file with default OS app ───────────────────────────────────────
 ipcMain.handle('shell:openPath', async (_e, filePath: string) => {
   const err = await shell.openPath(filePath)
