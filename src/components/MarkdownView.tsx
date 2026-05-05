@@ -1,6 +1,8 @@
 import { useRef, useEffect, useState, useCallback, useMemo } from 'react'
 import ReactMarkdown from 'react-markdown'
 import remarkGfm from 'remark-gfm'
+import rehypeRaw from 'rehype-raw'
+import rehypeSanitize, { defaultSchema } from 'rehype-sanitize'
 import { Prism as SyntaxHighlighter } from 'react-syntax-highlighter'
 import { oneLight, oneDark } from 'react-syntax-highlighter/dist/esm/styles/prism'
 import { useAppStore, type Tab } from '../stores/useAppStore'
@@ -17,6 +19,16 @@ interface Props {
   lineNumbers?: boolean
   cursorLine?: number
   onScroll?: () => void
+}
+
+// Sanitize schema based on GitHub's defaults, with our custom-class spans
+// (inline-tag from remarkInlineTag) and heading id anchors preserved.
+const sanitizeSchema = {
+  ...defaultSchema,
+  attributes: {
+    ...defaultSchema.attributes,
+    '*': [...((defaultSchema.attributes as any)?.['*'] ?? []), 'className', 'id'],
+  },
 }
 
 function slugify(text: string): string {
@@ -417,12 +429,13 @@ export default function MarkdownView({ tab, scrollRef, lineNumbers, cursorLine, 
   const markdownElement = useMemo(() => (
     <ReactMarkdown
       remarkPlugins={[
-        [remarkGfm, { singleTilde: false }], 
-        remarkMark, 
-        remarkInlineTag, 
-        remarkHeadingId, 
+        [remarkGfm, { singleTilde: false }],
+        remarkMark,
+        remarkInlineTag,
+        remarkHeadingId,
         ...(lineNumbers ? [[remarkLinePosition, { fmOffset }]] : [])
       ] as any}
+      rehypePlugins={[rehypeRaw, [rehypeSanitize, sanitizeSchema]] as any}
       urlTransform={(url) => url}
       components={{
         h1: (p) => <HeadingWithId level={1} {...p} />,

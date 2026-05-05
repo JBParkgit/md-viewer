@@ -1,5 +1,17 @@
 # Changelog
 
+## 2.23.0 — 2026-05-05
+
+### 추가
+
+- **마크다운 미리보기에서 raw HTML 렌더 (`MarkdownView.tsx`, `ReadOnlyMarkdownPreview.tsx`)** — 본문에 적힌 `<br>`, `<sub>`, `<sup>`, `<details>`, `<kbd>`, `<u>` 등 inline HTML 이 글자 그대로 보이지 않고 실제 태그로 렌더되도록 수정. `react-markdown` v9 기본 동작은 보안상 raw HTML 을 이스케이프해서 GitHub/VS Code 등 다른 뷰어와 동작이 달랐음.
+  - `rehype-raw` 추가로 마크다운 내 HTML literal 을 hast 노드로 파싱.
+  - `rehype-sanitize` (GitHub 기본 스키마) 로 `<script>`, `<iframe>`, `onclick` 등 위험 태그/속성은 제거.
+  - 스키마에 `className`/`id` 와일드카드 허용 추가 — `remarkInlineTag` 의 `<span class="inline-tag">` 와 헤딩 앵커 id 가 sanitize 에 살아남도록.
+  - 적용 범위: 본문 미리보기 + 파일 이력/Diff 의 마크다운 미리보기 양쪽.
+
+---
+
 ## 2.22.1 — 2026-05-04
 
 ### 수정

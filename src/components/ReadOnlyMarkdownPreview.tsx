@@ -1,6 +1,8 @@
 import { useMemo } from 'react'
 import ReactMarkdown from 'react-markdown'
 import remarkGfm from 'remark-gfm'
+import rehypeRaw from 'rehype-raw'
+import rehypeSanitize, { defaultSchema } from 'rehype-sanitize'
 import { Prism as SyntaxHighlighter } from 'react-syntax-highlighter'
 import { oneLight, oneDark } from 'react-syntax-highlighter/dist/esm/styles/prism'
 import { useAppStore } from '../stores/useAppStore'
@@ -8,6 +10,16 @@ import remarkMark from '../utils/remarkMark'
 import remarkInlineTag from '../utils/remarkInlineTag'
 import MermaidDiagram from './MermaidDiagram'
 import { stripFrontmatter } from '../utils/frontmatter'
+
+// GitHub-default sanitize schema with className/id allowed on every tag, so
+// remarkInlineTag's <span class="inline-tag"> and our heading anchors survive.
+const sanitizeSchema = {
+  ...defaultSchema,
+  attributes: {
+    ...defaultSchema.attributes,
+    '*': [...((defaultSchema.attributes as any)?.['*'] ?? []), 'className', 'id'],
+  },
+}
 
 interface Props {
   content: string
@@ -60,6 +72,7 @@ export default function ReadOnlyMarkdownPreview({ content, basePath, className }
     <div className={`markdown-body text-gray-900 dark:text-gray-100 ${className || ''}`}>
       <ReactMarkdown
         remarkPlugins={[[remarkGfm, { singleTilde: false }], remarkMark, remarkInlineTag] as any}
+        rehypePlugins={[rehypeRaw, [rehypeSanitize, sanitizeSchema]] as any}
         urlTransform={(url) => url}
         components={{
           code({ className: cls, children, ...props }) {
