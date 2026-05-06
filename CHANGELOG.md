@@ -1,5 +1,16 @@
 # Changelog
 
+## 2.24.0 — 2026-05-06
+
+### 추가
+
+- **`<details>` 내부의 마크다운 렌더 (`src/utils/expandDetailsBlocks.ts` 신규, `MarkdownView.tsx`, `ReadOnlyMarkdownPreview.tsx`)** — Obsidian 처럼 `<details>...</details>` 안에 적은 마크다운(`**굵게**`, `- 목록`, `### 헤딩`, 코드블록, 이미지 등)이 실제로 렌더되도록 수정. 기존엔 v2.23.0 의 `rehype-raw` 도입으로 태그 자체는 보였지만 CommonMark 가 그 영역을 통째로 raw HTML 블록으로 취급해 안쪽 텍스트는 마크다운으로 파싱되지 않았음.
+  - 전처리 단계에서 `<details>` 본문 양쪽에 빈 줄을 끼워 CommonMark 가 안쪽을 별도 블록으로 파싱하게 함. `<summary>` 가 있으면 여는 태그에 그대로 붙여 두고 그 뒤부터 빈 줄을 삽입.
+  - 깊이 카운터로 중첩 `<details>` 도 처리.
+  - 코드 펜스/인라인 코드는 기존 위키링크 마스킹 파이프라인을 재사용해 보호 — 가이드 문서가 `<details>` 사용 예시를 ``` 블록으로 적어둬도 건드리지 않음.
+
+---
+
 ## 2.23.0 — 2026-05-05
 
 ### 추가

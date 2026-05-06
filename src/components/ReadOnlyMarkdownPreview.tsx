@@ -8,6 +8,7 @@ import { oneLight, oneDark } from 'react-syntax-highlighter/dist/esm/styles/pris
 import { useAppStore } from '../stores/useAppStore'
 import remarkMark from '../utils/remarkMark'
 import remarkInlineTag from '../utils/remarkInlineTag'
+import { expandDetailsBlocks } from '../utils/expandDetailsBlocks'
 import MermaidDiagram from './MermaidDiagram'
 import { stripFrontmatter } from '../utils/frontmatter'
 
@@ -51,7 +52,8 @@ export default function ReadOnlyMarkdownPreview({ content, basePath, className }
         /\[\[([^\]|]+)(?:\|([^\]]+))?\]\]/g,
         (_, target, label) => `[${label || target}](docuflow://${encodeURIComponent(String(target).trim())})`,
       )
-    return masked.replace(/WLMASK(\d+)/g, (_, i) => tokens[Number(i)])
+    const expanded = expandDetailsBlocks(masked)
+    return expanded.replace(/WLMASK(\d+)/g, (_, i) => tokens[Number(i)])
   }, [content])
 
   const resolveImageSrc = useMemo(() => (src: string): string => {

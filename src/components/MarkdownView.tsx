@@ -11,6 +11,7 @@ import { parseFrontmatterTags, stripFrontmatter } from '../utils/frontmatter'
 import { getTagColorClasses } from './TagPanel'
 import remarkMark from '../utils/remarkMark'
 import remarkInlineTag from '../utils/remarkInlineTag'
+import { expandDetailsBlocks } from '../utils/expandDetailsBlocks'
 import MermaidDiagram from './MermaidDiagram'
 
 interface Props {
@@ -186,8 +187,8 @@ export default function MarkdownView({ tab, scrollRef, lineNumbers, cursorLine, 
   const processedContent = useMemo(() => {
     const src = stripFrontmatter(tab.content)
     // Mask fenced (``` / ~~~) blocks first, then inline ` ... ` spans, with
-    // unique sentinel tokens. Apply wikilink replacement to the masked
-    // string, then restore the masks.
+    // unique sentinel tokens. Apply wikilink replacement and Obsidian-style
+    // <details> normalization to the masked string, then restore the masks.
     const tokens: string[] = []
     const masked = src
       .replace(/```[\s\S]*?```|~~~[\s\S]*?~~~|`[^`\n]*`/g, (m) => {
@@ -198,7 +199,8 @@ export default function MarkdownView({ tab, scrollRef, lineNumbers, cursorLine, 
         /\[\[([^\]|]+)(?:\|([^\]]+))?\]\]/g,
         (_, target, label) => `[${label || target}](docuflow://${encodeURIComponent(String(target).trim())})`,
       )
-    return masked.replace(/WLMASK(\d+)/g, (_, i) => tokens[Number(i)])
+    const expanded = expandDetailsBlocks(masked)
+    return expanded.replace(/WLMASK(\d+)/g, (_, i) => tokens[Number(i)])
   }, [tab.content])
 
   // Wire up external scroll ref
