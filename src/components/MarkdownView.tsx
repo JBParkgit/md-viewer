@@ -23,12 +23,24 @@ interface Props {
 }
 
 // Sanitize schema based on GitHub's defaults, with our custom-class spans
-// (inline-tag from remarkInlineTag) and heading id anchors preserved.
+// (inline-tag from remarkInlineTag), heading id anchors, and data-line markers
+// (emitted by remarkLinePosition and read by useSyncScroll for editor↔preview
+// scroll mapping) preserved. Without data*, sanitize strips data-line and the
+// split-view scroll sync becomes a no-op.
 const sanitizeSchema = {
   ...defaultSchema,
   attributes: {
     ...defaultSchema.attributes,
-    '*': [...((defaultSchema.attributes as any)?.['*'] ?? []), 'className', 'id'],
+    '*': [
+      ...((defaultSchema.attributes as any)?.['*'] ?? []),
+      'className',
+      'id',
+      // hast-util-sanitize compares against camelCased property names (data-line
+      // → dataLine), so spelling the kebab attribute here doesn't match. The
+      // 'data*' wildcard is the documented escape hatch for letting all data-*
+      // properties through.
+      'data*',
+    ],
   },
 }
 
