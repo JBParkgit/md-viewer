@@ -187,21 +187,25 @@ export default function LiveEditor({ tab, onSave, onChange, editorViewRef, onScr
   mdFilesRef.current = mdFiles
 
   // CodeMirror's cursor layer uses a CSS animation that can get stuck in
-  // the "off" frame after the window loses and regains focus (alt-tab,
-  // workspace switch, devtools open). Restart the animation and force a
-  // re-measure so the caret reappears.
+  // the "off" frame after focus changes (alt-tab, workspace switch, devtools,
+  // clicking away to a non-editor element and back). Restart the animation
+  // and force a re-measure so the caret reappears.
+  const restartCursorAnimation = useCallback((view: EditorView) => {
+    const layer = view.dom.querySelector('.cm-cursorLayer') as HTMLElement | null
+    if (layer) {
+      const prev = layer.style.animationName
+      layer.style.animationName = 'none'
+      void layer.offsetWidth
+      layer.style.animationName = prev || ''
+    }
+    view.requestMeasure()
+  }, [])
+
   useEffect(() => {
     const restoreCursor = () => {
       const view = cmRef.current?.view
       if (!view || !view.hasFocus) return
-      const layer = view.dom.querySelector('.cm-cursorLayer') as HTMLElement | null
-      if (layer) {
-        const prev = layer.style.animationName
-        layer.style.animationName = 'none'
-        void layer.offsetWidth
-        layer.style.animationName = prev || ''
-      }
-      view.requestMeasure()
+      restartCursorAnimation(view)
     }
     window.addEventListener('focus', restoreCursor)
     document.addEventListener('visibilitychange', restoreCursor)
@@ -209,7 +213,14 @@ export default function LiveEditor({ tab, onSave, onChange, editorViewRef, onScr
       window.removeEventListener('focus', restoreCursor)
       document.removeEventListener('visibilitychange', restoreCursor)
     }
-  }, [])
+  }, [restartCursorAnimation])
+
+  const cursorFocusListener = useMemo(() =>
+    EditorView.updateListener.of((update) => {
+      if (update.focusChanged && update.view.hasFocus) {
+        restartCursorAnimation(update.view)
+      }
+    }), [restartCursorAnimation])
 
   // ── Helper: wrap selection with inline markers ─────────────────────────
   const wrapSelection = useCallback((view: EditorView, before: string, after: string) => {
@@ -550,8 +561,9 @@ export default function LiveEditor({ tab, onSave, onChange, editorViewRef, onScr
     pasteHandler,
     wikiLinkCompletion,
     cursorLineListener,
+    cursorFocusListener,
     isDark ? darkTheme : lightTheme,
-  ], [isDark, saveKeymap, pasteHandler, wikiLinkCompletion, spellcheckEnabled, cursorLineListener])
+  ], [isDark, saveKeymap, pasteHandler, wikiLinkCompletion, spellcheckEnabled, cursorLineListener, cursorFocusListener])
 
   const handleChange = useCallback((value: string) => {
     if (tab.isPreview) {
