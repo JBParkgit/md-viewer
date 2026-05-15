@@ -497,7 +497,9 @@ export default function LiveEditor({ tab, onSave, onChange, editorViewRef, onScr
     text = text.replace(/^\n+|\n+$/g, '')
     // If the pasted text has no paragraph breaks at all but does have single
     // newlines, promote them so markdown paragraphs render correctly.
-    if (!text.includes('\n\n') && text.includes('\n')) {
+    // Skip promotion if the text contains a markdown table (lines starting with |).
+    const hasTable = /^\|.+\|$/m.test(text)
+    if (!hasTable && !text.includes('\n\n') && text.includes('\n')) {
       text = text.replace(/\n/g, '\n\n')
     }
     return text

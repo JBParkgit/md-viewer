@@ -15,6 +15,18 @@ export default function TabBar({ paneId = 'left' }: Props) {
   const splitMode = useAppStore(s => s.splitMode)
   const moveTabToPane = useAppStore(s => s.moveTabToPane)
 
+  const handleCloseTab = useCallback((tabId: string) => {
+    const allTabs = paneId === 'right'
+      ? useAppStore.getState().rightTabs
+      : useAppStore.getState().tabs
+    const tab = allTabs.find(t => t.id === tabId)
+    if (tab?.isDirty) {
+      const ok = window.confirm(`"${tab.fileName}" 파일이 저장되지 않았습니다. 저장하지 않고 닫으시겠습니까?`)
+      if (!ok) return
+    }
+    closeTab(tabId)
+  }, [paneId, closeTab])
+
   const scrollRef = useRef<HTMLDivElement>(null)
   const [canScrollLeft, setCanScrollLeft] = useState(false)
   const [canScrollRight, setCanScrollRight] = useState(false)
@@ -132,7 +144,7 @@ export default function TabBar({ paneId = 'left' }: Props) {
               {/* 닫기 버튼 */}
               {tab.isPreview ? (
                 <button
-                  onClick={(e) => { e.stopPropagation(); closeTab(tab.id) }}
+                  onClick={(e) => { e.stopPropagation(); handleCloseTab(tab.id) }}
                   className="w-4 h-4 flex items-center justify-center rounded hover:bg-gray-300 dark:hover:bg-gray-600 flex-shrink-0 opacity-60 hover:opacity-100"
                   title="탭 닫기"
                 >
@@ -142,7 +154,7 @@ export default function TabBar({ paneId = 'left' }: Props) {
                 </button>
               ) : (
                 <button
-                  onClick={(e) => { e.stopPropagation(); closeTab(tab.id) }}
+                  onClick={(e) => { e.stopPropagation(); handleCloseTab(tab.id) }}
                   className="w-4 h-4 flex items-center justify-center rounded hover:bg-gray-300 dark:hover:bg-gray-600 opacity-0 group-hover:opacity-100 transition-opacity flex-shrink-0"
                   title="탭 닫기"
                 >
