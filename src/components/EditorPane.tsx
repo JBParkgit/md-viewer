@@ -4,6 +4,7 @@ import MarkdownEditor from './MarkdownEditor'
 import ImageViewer from './ImageViewer'
 import PdfViewer from './PdfViewer'
 import DocxViewer from './DocxViewer'
+import HtmlViewer from './HtmlViewer'
 import VideoPlayer from './VideoPlayer'
 import WelcomeScreen from './WelcomeScreen'
 
@@ -19,6 +20,7 @@ function PaneContent({ tab, openFile }: { tab: Tab | null; openFile: Props['open
   if (tab.fileType === 'video') return <VideoPlayer tab={tab} />
   if (tab.fileType === 'pdf') return <PdfViewer tab={tab} />
   if (tab.fileType === 'docx') return <DocxViewer tab={tab} />
+  if (tab.fileType === 'html') return <HtmlViewer tab={tab} />
   if (tab.fileType === 'other') return (
     <div className="flex-1 flex flex-col items-center justify-center gap-4 text-gray-400 dark:text-gray-500">
       <svg className="w-16 h-16" fill="none" stroke="currentColor" viewBox="0 0 24 24">

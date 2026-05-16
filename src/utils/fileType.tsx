@@ -2,7 +2,7 @@
 
 export type FileGroup =
   | 'md' | 'image' | 'video' | 'pdf' | 'word' | 'excel' | 'ppt'
-  | 'code' | 'text' | 'zip' | 'other'
+  | 'html' | 'code' | 'text' | 'zip' | 'other'
 
 const EXT_MAP: Record<string, FileGroup> = {
   // markdown
@@ -20,7 +20,9 @@ const EXT_MAP: Record<string, FileGroup> = {
   // code
   js: 'code', ts: 'code', jsx: 'code', tsx: 'code',
   py: 'code', java: 'code', c: 'code', cpp: 'code',
-  cs: 'code', go: 'code', rs: 'code', html: 'code',
+  cs: 'code', go: 'code', rs: 'code',
+  // html
+  html: 'html', htm: 'html', xhtml: 'html',
   css: 'code', json: 'code', yaml: 'code', yml: 'code',
   xml: 'code', sh: 'code', bat: 'code', ps1: 'code',
   // text
@@ -45,6 +47,7 @@ export const FILE_GROUP_COLOR: Record<FileGroup, string> = {
   word:  'text-blue-600',
   excel: 'text-green-600',
   ppt:   'text-orange-500',
+  html:  'text-orange-600',
   code:  'text-purple-500',
   text:  'text-gray-400',
   zip:   'text-yellow-600',
@@ -103,6 +106,13 @@ export function FileTypeIcon({ name, className = 'w-3.5 h-3.5' }: IconProps) {
       return (
         <svg className={cls} viewBox="0 0 24 24" fill="currentColor">
           <path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8l-6-6zm-1 1.5L18.5 9H13V3.5zM9 12h3a2 2 0 010 4h-1v2H9v-6zm2 1v2h1a1 1 0 000-2h-1z" />
+        </svg>
+      )
+    case 'html':
+      return (
+        <svg className={cls} fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 12h18M12 3a15 15 0 010 18M12 3a15 15 0 000 18" />
         </svg>
       )
     case 'code':

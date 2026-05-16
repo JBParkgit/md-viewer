@@ -390,7 +390,8 @@ function FileRow({ node, onOpenFile, onOpenFilePinned, searchQuery, depth, proje
   const isDocx = group === 'word'
   const isText = group === 'text'
   const isVideo = group === 'video'
-  const isInApp = isMd || isImage || isPdf || isDocx || isText || isVideo
+  const isHtml = group === 'html'
+  const isInApp = isMd || isImage || isPdf || isDocx || isText || isVideo || isHtml
 
   // ── Directory (compact / antigravity) ──────────────────────────────────
   if (node.type === 'directory') {

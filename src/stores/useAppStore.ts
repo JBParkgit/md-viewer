@@ -1,7 +1,7 @@
 import { create } from 'zustand'
 import { initProjectTemplates } from '../utils/mdTemplates'
 
-export type TabFileType = 'md' | 'image' | 'pdf' | 'docx' | 'video' | 'other'
+export type TabFileType = 'md' | 'image' | 'pdf' | 'docx' | 'video' | 'html' | 'other'
 
 export const PREDEFINED_TAGS = [
   { id: 'in-progress', label: '진행중', color: 'bg-yellow-100 text-yellow-700 dark:bg-yellow-900 dark:text-yellow-300' },

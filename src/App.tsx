@@ -222,12 +222,13 @@ export default function App() {
   const VIDEO_EXTS = ['mp4', 'webm', 'ogg', 'mov', 'avi', 'mkv']
   const PDF_EXTS = ['pdf']
   const DOCX_EXTS = ['doc', 'docx']
+  const HTML_EXTS = ['html', 'htm', 'xhtml']
   const TEXT_EXTS = [
     'txt', 'log', 'ini', 'env', 'toml',
     'json', 'yml', 'yaml', 'xml', 'csv',
     'js', 'ts', 'jsx', 'tsx', 'mjs', 'cjs',
     'py', 'java', 'c', 'h', 'cpp', 'hpp', 'cs', 'go', 'rs', 'rb', 'php', 'swift', 'kt',
-    'html', 'htm', 'css', 'scss', 'sass', 'less',
+    'css', 'scss', 'sass', 'less',
     'sh', 'bash', 'zsh', 'bat', 'cmd', 'ps1',
     'sql', 'graphql', 'dockerfile', 'gitignore', 'editorconfig', 'conf', 'cfg', 'properties',
   ]
@@ -252,6 +253,15 @@ export default function App() {
     if (DOCX_EXTS.includes(ext)) {
       openTab(filePath, fileName, '', 'docx', preview)
       useAppStore.getState().addRecentFile(filePath, fileName)
+      return
+    }
+    if (HTML_EXTS.includes(ext)) {
+      const result = await window.electronAPI.readFile(filePath)
+      if (result.success && result.content !== undefined) {
+        openTab(filePath, fileName, result.content, 'html', preview)
+        useAppStore.getState().addRecentFile(filePath, fileName)
+        window.electronAPI.watchFile(filePath)
+      }
       return
     }
     if (TEXT_EXTS.includes(ext)) {
