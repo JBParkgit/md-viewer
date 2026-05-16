@@ -12,6 +12,7 @@ import { getTagColorClasses } from './TagPanel'
 import remarkMark from '../utils/remarkMark'
 import remarkInlineTag from '../utils/remarkInlineTag'
 import { expandDetailsBlocks } from '../utils/expandDetailsBlocks'
+import { fixCjkEmphasis } from '../utils/fixCjkEmphasis'
 import MermaidDiagram from './MermaidDiagram'
 
 interface Props {
@@ -211,7 +212,7 @@ export default function MarkdownView({ tab, scrollRef, lineNumbers, cursorLine, 
         /\[\[([^\]|]+)(?:\|([^\]]+))?\]\]/g,
         (_, target, label) => `[${label || target}](docuflow://${encodeURIComponent(String(target).trim())})`,
       )
-    const expanded = expandDetailsBlocks(masked)
+    const expanded = fixCjkEmphasis(expandDetailsBlocks(masked))
     return expanded.replace(/WLMASK(\d+)/g, (_, i) => tokens[Number(i)])
   }, [tab.content])
 
