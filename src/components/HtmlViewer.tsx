@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useRef, useCallback } from 'react'
 import type { Tab } from '../stores/useAppStore'
 
 interface Props {
@@ -7,6 +7,16 @@ interface Props {
 
 type Mode = 'rendered' | 'source'
 
+// Subset of Electron's WebviewTag we use.
+interface WebviewElement extends HTMLElement {
+  src: string
+  canGoBack(): boolean
+  canGoForward(): boolean
+  goBack(): void
+  goForward(): void
+  reload(): void
+}
+
 function toFileUrl(filePath: string) {
   return 'file:///' + filePath.replace(/\\/g, '/')
 }
@@ -14,19 +24,59 @@ function toFileUrl(filePath: string) {
 export default function HtmlViewer({ tab }: Props) {
   const [mode, setMode] = useState<Mode>('rendered')
   const [source, setSource] = useState<string>(tab.content)
-  const [reloadKey, setReloadKey] = useState(0)
+  const [canBack, setCanBack] = useState(false)
+  const [canForward, setCanForward] = useState(false)
+
+  const wvRef = useRef<WebviewElement | null>(null)
 
   useEffect(() => {
     setSource(tab.content)
   }, [tab.filePath, tab.content])
 
-  const reload = async () => {
+  const updateNav = useCallback(() => {
+    const wv = wvRef.current
+    if (!wv) return
+    try {
+      setCanBack(wv.canGoBack())
+      setCanForward(wv.canGoForward())
+    } catch {
+      /* not ready yet */
+    }
+  }, [])
+
+  // Electron exposes navigation over IPC, so this works across the
+  // out-of-process guest where iframe access was blocked.
+  useEffect(() => {
+    const wv = wvRef.current
+    if (!wv) return
+    const onNav = () => updateNav()
+    wv.addEventListener('dom-ready', onNav)
+    wv.addEventListener('did-navigate', onNav)
+    wv.addEventListener('did-navigate-in-page', onNav) // #anchor / pushState
+    return () => {
+      wv.removeEventListener('dom-ready', onNav)
+      wv.removeEventListener('did-navigate', onNav)
+      wv.removeEventListener('did-navigate-in-page', onNav)
+    }
+  }, [tab.filePath, updateNav])
+
+  const goBack = useCallback(() => {
+    const wv = wvRef.current
+    if (wv && wv.canGoBack()) wv.goBack()
+  }, [])
+
+  const goForward = useCallback(() => {
+    const wv = wvRef.current
+    if (wv && wv.canGoForward()) wv.goForward()
+  }, [])
+
+  const reload = useCallback(async () => {
     const result = await window.electronAPI.readFile(tab.filePath)
     if (result.success && result.content !== undefined) {
       setSource(result.content)
     }
-    setReloadKey(k => k + 1)
-  }
+    wvRef.current?.reload()
+  }, [tab.filePath])
 
   const tabBtn = (m: Mode) =>
     `px-2 h-6 text-xs rounded transition-colors ${
@@ -35,10 +85,43 @@ export default function HtmlViewer({ tab }: Props) {
         : 'hover:bg-gray-100 dark:hover:bg-gray-700 text-gray-600 dark:text-gray-400'
     }`
 
+  const navBtn = (enabled: boolean) =>
+    `w-7 h-7 flex items-center justify-center rounded text-gray-600 dark:text-gray-400 ${
+      enabled
+        ? 'hover:bg-gray-100 dark:hover:bg-gray-700'
+        : 'opacity-30 cursor-not-allowed'
+    }`
+
   return (
     <div className="flex flex-col h-full bg-gray-100 dark:bg-gray-900">
       {/* Toolbar */}
       <div className="flex items-center gap-2 px-4 h-9 border-b border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 flex-shrink-0">
+        {mode === 'rendered' && (
+          <>
+            <button
+              onClick={goBack}
+              disabled={!canBack}
+              className={navBtn(canBack)}
+              title="이전"
+            >
+              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
+              </svg>
+            </button>
+            <button
+              onClick={goForward}
+              disabled={!canForward}
+              className={navBtn(canForward)}
+              title="다음"
+            >
+              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
+              </svg>
+            </button>
+            <div className="w-px h-4 bg-gray-200 dark:bg-gray-600" />
+          </>
+        )}
+
         <span className="text-xs text-gray-400 truncate flex-1" title={tab.filePath}>
           {tab.filePath}
         </span>
@@ -73,18 +156,18 @@ export default function HtmlViewer({ tab }: Props) {
         </button>
       </div>
 
-      {/* Content */}
-      <div className="flex-1 overflow-hidden">
-        {mode === 'rendered' ? (
-          <iframe
-            key={`${tab.filePath}:${reloadKey}`}
-            src={toFileUrl(tab.filePath)}
-            title={tab.fileName}
-            referrerPolicy="no-referrer"
-            className="w-full h-full border-0 bg-white"
-          />
-        ) : (
-          <pre className="w-full h-full overflow-auto m-0 p-4 text-xs leading-relaxed font-mono text-gray-800 dark:text-gray-200 bg-white dark:bg-gray-800 whitespace-pre">
+      {/* Content — webview stays mounted so history survives mode toggles */}
+      <div className="flex-1 overflow-hidden relative">
+        <webview
+          key={tab.filePath}
+          ref={(el) => {
+            wvRef.current = el as unknown as WebviewElement | null
+          }}
+          src={toFileUrl(tab.filePath)}
+          style={{ position: 'absolute', inset: 0, width: '100%', height: '100%', background: '#fff' }}
+        />
+        {mode === 'source' && (
+          <pre className="absolute inset-0 z-10 overflow-auto m-0 p-4 text-xs leading-relaxed font-mono text-gray-800 dark:text-gray-200 bg-white dark:bg-gray-800 whitespace-pre">
             {source}
           </pre>
         )}

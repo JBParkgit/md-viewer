@@ -105,6 +105,7 @@ function createWindow() {
       contextIsolation: true,
       nodeIntegration: false,
       webSecurity: false, // local file:// images
+      webviewTag: true, // <webview> for HTML preview with back/forward
     },
     titleBarStyle: 'hidden',
     titleBarOverlay: {
